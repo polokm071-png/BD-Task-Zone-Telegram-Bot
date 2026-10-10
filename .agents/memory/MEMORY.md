@@ -1,0 +1,1 @@
+- [Telegram URL-task verification](telegram-url-task-verification.md) — URL-button clicks are not reported to bots; start the delay from an explicit callback and describe it as a timing gate, not proof of task completion.
