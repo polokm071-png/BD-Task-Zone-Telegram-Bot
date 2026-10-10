@@ -1,59 +1,65 @@
-import os, threading
-from flask import Flask
 import telebot
-from telebot import types
-from pymongo import MongoClient
+from flask import Flask
+import threading
+import os
 
-BOT_TOKEN=os.getenv("BOT_TOKEN")
-MONGO_URI=os.getenv("MONGO_URI")
-bot=telebot.TeleBot(BOT_TOKEN)
-client=MongoClient(MONGO_URI)
-db=client['bd_task_zone']
-users=db['users']
+TOKEN = os.environ.get("BOT_TOKEN")
+bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
-app=Flask(__name__)
 @app.route('/')
-def home(): return "BD Task Zone Live"
+def home():
+    return "Bot is Running!"
 
-def run_flask(): 
-    app.run(host='0.0.0.0',port=int(os.environ.get("PORT",10000)))
+def main_menu():
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("📋 কাজ করুন")
+    markup.row("💰 ব্যালেন্স", "💳 উইথড্র")
+    markup.row("👥 রেফার")
+    return markup
+
+def platform_menu():
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("Telegram", "YouTube")
+    markup.row("Facebook", "TikTok")
+    markup.row("Instagram", "Website")
+    markup.row("⬅️ Back")
+    return markup
 
 @bot.message_handler(commands=['start'])
-def start_cmd(m):
-    if not users.find_one({"user_id":m.from_user.id}): 
-        users.insert_one({"user_id":m.from_user.id,"balance":0})
-    kb=types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row("📋 কাজ করুন","💰 ব্যালেন্স")
-    kb.row("👥 রেফার","💳 উইথড্র")
-    bot.send_message(m.chat.id,f"👋 {m.from_user.first_name}!\nBD Task Zone এ স্বাগতম!",reply_markup=kb)
+def start(m):
+    bot.send_message(m.chat.id, f"👋 স্বাগতম {m.from_user.first_name}!\n\nBD Task Zone এ আপনাকে স্বাগতম।", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m:m.text and "কাজ করুন" in m.text)
-def kaj(m):
-    ik=types.InlineKeyboardMarkup(row_width=2)
-    ik.add(types.InlineKeyboardButton("Telegram",callback_data="tg"),types.InlineKeyboardButton("YouTube",callback_data="yt"),types.InlineKeyboardButton("Facebook",callback_data="fb"),types.InlineKeyboardButton("TikTok",callback_data="tt"),types.InlineKeyboardButton("Instagram",callback_data="ig"),types.InlineKeyboardButton("Website",callback_data="web"))
-    bot.send_message(m.chat.id,"👇 প্লাটফর্ম সিলেক্ট করুন:",reply_markup=ik)
+@bot.message_handler(func=lambda m: m.text == "📋 কাজ করুন" or m.text == "কাজ করুন")
+def kaj_korun(m):
+    bot.send_message(m.chat.id, "👇 প্ল্যাটফর্ম সিলেক্ট করুন:", reply_markup=platform_menu())
 
-@bot.message_handler(func=lambda m:m.text and "ব্যালেন্স" in m.text)
-def bal(m):
-    u=users.find_one({"user_id":m.from_user.id})
-    bot.send_message(m.chat.id,f"💰 ব্যালেন্স: {u.get('balance',0) if u else 0} টাকা")
+@bot.message_handler(func=lambda m: m.text == "💰 ব্যালেন্স" or m.text == "ব্যালেন্স")
+def balance(m):
+    bot.send_message(m.chat.id, "💰 আপনার ব্যালেন্স: 0.00 টাকা\n\nকাজ করে আয় করুন!", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m:m.text and "রেফার" in m.text)
-def ref(m):
-    bot.send_message(m.chat.id,f"👥 রেফার লিংক:\nhttps://t.me/BDTaskZoneBD_bot?start={m.from_user.id}\nপ্রতি রেফারে ২০ টাকা!")
+@bot.message_handler(func=lambda m: m.text == "💳 উইথড্র" or m.text == "উইথড্র")
+def withdraw(m):
+    bot.send_message(m.chat.id, "💳 উইথড্র করতে মিনিমাম 500 টাকা লাগবে।\nআপনার ব্যালেন্স: 0.00 টাকা", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m:m.text and "উইথড্র" in m.text)
-def wd(m):
-    u=users.find_one({"user_id":m.from_user.id})
-    bot.send_message(m.chat.id,f"💳 ব্যালেন্স: {u.get('balance',0) if u else 0} টাকা\nমিনিমাম ৫০০ টাকা")
+@bot.message_handler(func=lambda m: m.text == "👥 রেফার" or m.text == "রেফার")
+def refer(m):
+    link = f"https://t.me/BDTaskZoneBD_bot?start={m.from_user.id}"
+    bot.send_message(m.chat.id, f"👥 আপনার রেফার লিংক:\n{link}\n\nপ্রতি রেফারে 20 টাকা!", reply_markup=main_menu())
 
-@bot.callback_query_handler(func=lambda c:True)
-def cb(c):
-    bot.answer_callback_query(c.id)
-    bot.send_message(c.message.chat.id,f"📢 {c.data} Task: t.me/COINZOBD Join করে Screenshot দিন")
+@bot.message_handler(func=lambda m: m.text in ["Telegram","YouTube","Facebook","TikTok","Instagram","Website"])
+def platform_click(m):
+    bot.send_message(m.chat.id, f"✅ {m.text} এর জন্য কোনো কাজ আপাতত নেই। শীঘ্রই আসবে!", reply_markup=platform_menu())
+
+@bot.message_handler(func=lambda m: m.text == "⬅️ Back")
+def back(m):
+    bot.send_message(m.chat.id, "Main Menu:", reply_markup=main_menu())
+
+def run_flask():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 bot.remove_webhook()
-import time; time.sleep(2)
+import time; time.sleep(1)
 
 if __name__=="__main__":
     threading.Thread(target=run_flask).start()
