@@ -9,9 +9,15 @@ import time
 import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+import sys
 from typing import Any
 from urllib.parse import quote, urlparse
 
+# Support both `python main.py` and the deployment Procfile's direct script path.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import keep_alive
 import telebot
 from telebot import types
 from telebot.apihelper import ApiTelegramException
@@ -1248,6 +1254,7 @@ def run() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     bot = create_bot()
+    keep_alive.keep_alive()
     logging.info("BD Task Zone bot is polling for updates.")
     bot.infinity_polling(
         timeout=30,
