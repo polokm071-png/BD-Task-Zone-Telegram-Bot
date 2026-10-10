@@ -1,4 +1,2 @@
-Flask
-python-telegram-bot
-pyTelegramBotAPI
-pymongo
+python-telegram-bot==20.7
+pymongo==4.6.0
