@@ -2,6 +2,7 @@ import telebot
 from flask import Flask
 import threading
 import os
+import time
 
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
@@ -30,19 +31,19 @@ def platform_menu():
 def start(m):
     bot.send_message(m.chat.id, f"👋 স্বাগতম {m.from_user.first_name}!\n\nBD Task Zone এ আপনাকে স্বাগতম।", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "📋 কাজ করুন" or m.text == "কাজ করুন")
+@bot.message_handler(func=lambda m: m.text and "কাজ করুন" in m.text)
 def kaj_korun(m):
     bot.send_message(m.chat.id, "👇 প্ল্যাটফর্ম সিলেক্ট করুন:", reply_markup=platform_menu())
 
-@bot.message_handler(func=lambda m: m.text == "💰 ব্যালেন্স" or m.text == "ব্যালেন্স")
+@bot.message_handler(func=lambda m: m.text and "ব্যালেন্স" in m.text)
 def balance(m):
     bot.send_message(m.chat.id, "💰 আপনার ব্যালেন্স: 0.00 টাকা\n\nকাজ করে আয় করুন!", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "💳 উইথড্র" or m.text == "উইথড্র")
+@bot.message_handler(func=lambda m: m.text and "উইথড্র" in m.text)
 def withdraw(m):
     bot.send_message(m.chat.id, "💳 উইথড্র করতে মিনিমাম 500 টাকা লাগবে।\nআপনার ব্যালেন্স: 0.00 টাকা", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "👥 রেফার" or m.text == "রেফার")
+@bot.message_handler(func=lambda m: m.text and "রেফার" in m.text)
 def refer(m):
     link = f"https://t.me/BDTaskZoneBD_bot?start={m.from_user.id}"
     bot.send_message(m.chat.id, f"👥 আপনার রেফার লিংক:\n{link}\n\nপ্রতি রেফারে 20 টাকা!", reply_markup=main_menu())
@@ -59,7 +60,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 bot.remove_webhook()
-import time; time.sleep(1)
+time.sleep(1)
 
 if __name__=="__main__":
     threading.Thread(target=run_flask).start()
