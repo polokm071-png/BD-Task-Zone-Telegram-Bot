@@ -13,7 +13,7 @@ app = Flask(__name__)
 conn = sqlite3.connect('bot.db', check_same_thread=False)
 c = conn.cursor()
 c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL, ref_by INTEGER)')
-c.execute('CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT, link TEXT, reward REAL)')
+c.execute('CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT, title TEXT, link TEXT, reward REAL)')
 conn.commit()
 
 @app.route('/')
@@ -29,7 +29,8 @@ def main_menu():
 def admin_menu():
     m = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     m.row("➕ Task Add", "📊 Stats")
-    m.row("📢 Broadcast", "⬅️ Back")
+    m.row("📋 All Tasks", "🗑️ Delete Task")
+    m.row("⬅️ Back")
     return m
 
 def platform_menu():
@@ -39,6 +40,9 @@ def platform_menu():
     m.row("Instagram", "Website")
     m.row("⬅️ Back")
     return m
+
+# Temp storage
+user_data = {}
 
 @bot.message_handler(commands=['start'])
 def start(m):
@@ -52,10 +56,10 @@ def start(m):
         c.execute("INSERT INTO users VALUES (?,?,?)", (uid, 0, ref))
         if ref and ref!= uid:
             c.execute("UPDATE users SET balance = balance + 20 WHERE user_id=?", (ref,))
-            try: bot.send_message(ref, "🎉 নতুন রেফার! +20 টাকা বোনাস!")
+            try: bot.send_message(ref, "🎉 নতুন রেফার! +20 টাকা!")
             except: pass
         conn.commit()
-    bot.send_message(m.chat.id, f"👋 স্বাগতম {m.from_user.first_name}!\n\nBD Task Zone এ আপনাকে স্বাগতম।", reply_markup=main_menu())
+    bot.send_message(m.chat.id, f"👋 স্বাগতম {m.from_user.first_name}!", reply_markup=main_menu())
 
 @bot.message_handler(commands=['admin'])
 def admin(m):
@@ -63,27 +67,61 @@ def admin(m):
         return bot.send_message(m.chat.id, "⛔ আপনি Admin না")
     bot.send_message(m.chat.id, "👑 Admin Panel:", reply_markup=admin_menu())
 
+# --- আলাদা আলাদা Step এ Task Add ---
 @bot.message_handler(func=lambda m: m.text == "➕ Task Add")
-def add_task_step(m):
+def add_task_start(m):
     if m.from_user.id!= ADMIN_ID: return
-    bot.send_message(m.chat.id, "ফরম্যাটে পাঠাও:\n`Platform | Link | Reward`\nউদাঃ `Telegram | https://t.me/xyz | 2`", parse_mode="Markdown")
-    bot.register_next_step_handler(m, save_task)
+    bot.send_message(m.chat.id, "👇 Platform সিলেক্ট করুন:", reply_markup=platform_menu())
+    bot.register_next_step_handler(m, ask_title)
 
-def save_task(m):
+def ask_title(m):
+    if m.text == "⬅️ Back":
+        return bot.send_message(m.chat.id, "Admin Panel:", reply_markup=admin_menu())
+    user_data[m.from_user.id] = {"platform": m.text}
+    bot.send_message(m.chat.id, f"✅ Platform: {m.text}\n\nএখন Task এর Title লিখুন:\nযেমন: My Channel Join")
+    bot.register_next_step_handler(m, ask_link)
+
+def ask_link(m):
+    user_data[m.from_user.id]["title"] = m.text
+    bot.send_message(m.chat.id, f"✅ Title: {m.text}\n\nএখন Task এর Link দিন:")
+    bot.register_next_step_handler(m, ask_reward)
+
+def ask_reward(m):
+    user_data[m.from_user.id]["link"] = m.text
+    bot.send_message(m.chat.id, f"✅ Link: {m.text}\n\nএখন Reward কত দেবেন? শুধু সংখ্যা লিখুন:\nযেমন: 2")
+    bot.register_next_step_handler(m, save_task_final)
+
+def save_task_final(m):
     try:
-        plat, link, rew = [x.strip() for x in m.text.split("|")]
-        c.execute("INSERT INTO tasks (platform, link, reward) VALUES (?,?,?)", (plat, link, float(rew)))
+        data = user_data.get(m.from_user.id, {})
+        rew = float(m.text)
+        c.execute("INSERT INTO tasks (platform, title, link, reward) VALUES (?,?,?,?)", (data["platform"], data["title"], data["link"], rew))
         conn.commit()
-        bot.send_message(m.chat.id, f"✅ Task Add Done: {plat}", reply_markup=admin_menu())
+        bot.send_message(m.chat.id, f"✅ Task Add Done!\n\n📌 Platform: {data['platform']}\n📌 Title: {data['title']}\n🔗 Link: {data['link']}\n💰 Reward: {rew}৳", reply_markup=admin_menu())
+        user_data.pop(m.from_user.id, None)
     except Exception as e:
-        bot.send_message(m.chat.id, f"❌ ভুল ফরম্যাট! Error: {e}")
+        bot.send_message(m.chat.id, f"❌ Error: {e}\nআবার চেষ্টা করুন", reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: m.text == "📊 Stats")
 def stats(m):
     if m.from_user.id!= ADMIN_ID: return
     c.execute("SELECT COUNT(*), SUM(balance) FROM users")
     count, total = c.fetchone()
-    bot.send_message(m.chat.id, f"👥 Total User: {count}\n💰 Total Balance: {total or 0} টাকা", reply_markup=admin_menu())
+    c.execute("SELECT COUNT(*) FROM tasks")
+    tcount = c.fetchone()[0]
+    bot.send_message(m.chat.id, f"👥 User: {count}\n💰 Total Balance: {total or 0}৳\n📋 Total Task: {tcount}", reply_markup=admin_menu())
+
+@bot.message_handler(func=lambda m: m.text == "📋 All Tasks")
+def all_tasks(m):
+    if m.from_user.id!= ADMIN_ID: return
+    c.execute("SELECT id, platform, title, reward FROM tasks")
+    rows = c.fetchall()
+    if not rows:
+        return bot.send_message(m.chat.id, "কোনো Task নেই")
+    txt = "📋 All Tasks:\n\n"
+    for r in rows:
+        txt += f"ID:{r[0]} | {r[1]} | {r[2]} | {r[3]}৳\n"
+    bot.send_message(m.chat.id, txt, reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: "কাজ করুন" in m.text)
 def kaj(m): bot.send_message(m.chat.id, "👇 প্ল্যাটফর্ম সিলেক্ট করুন:", reply_markup=platform_menu())
@@ -92,26 +130,29 @@ def kaj(m): bot.send_message(m.chat.id, "👇 প্ল্যাটফর্ম 
 def bal(m):
     c.execute("SELECT balance FROM users WHERE user_id=?", (m.from_user.id,))
     b = c.fetchone()
-    bot.send_message(m.chat.id, f"💰 আপনার ব্যালেন্স: {b[0] if b else 0} টাকা", reply_markup=main_menu())
+    bot.send_message(m.chat.id, f"💰 ব্যালেন্স: {b[0] if b else 0}৳", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: "উইথড্র" in m.text)
-def wd(m): bot.send_message(m.chat.id, "💳 উইথড্র মিনিমাম 500 টাকা।", reply_markup=main_menu())
+def wd(m): bot.send_message(m.chat.id, "💳 উইথড্র মিনিমাম 500৳", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: "রেফার" in m.text)
 def ref(m):
     link = f"https://t.me/BDTaskZoneBD_bot?start={m.from_user.id}"
-    bot.send_message(m.chat.id, f"👥 রেফার লিংক:\n{link}\nপ্রতি রেফারে 20 টাকা!", reply_markup=main_menu())
+    bot.send_message(m.chat.id, f"👥 রেফার লিংক:\n{link}\nপ্রতি রেফারে 20৳", reply_markup=main_menu())
 
 @bot.message_handler(func=lambda m: m.text in ["Telegram","YouTube","Facebook","TikTok","Instagram","Website"])
 def plat_click(m):
-    c.execute("SELECT link, reward FROM tasks WHERE platform=?", (m.text,))
+    if m.from_user.id == ADMIN_ID and m.text in user_data.get(m.from_user.id, {}).values():
+        return
+    c.execute("SELECT title, link, reward FROM tasks WHERE platform=?", (m.text,))
     rows = c.fetchall()
     if not rows:
-        return bot.send_message(m.chat.id, f"❌ {m.text} এ এখন কোনো কাজ নেই।")
-    for link, rew in rows:
+        return bot.send_message(m.chat.id, f"❌ {m.text} এ কোনো কাজ নেই।")
+    for title, link, rew in rows:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton(f"✅ Complete - {rew}৳", callback_data=f"done_{rew}"))
-        bot.send_message(m.chat.id, f"🔗 Task: {link}\n💰 Reward: {rew}৳", reply_markup=markup)
+        markup.add(telebot.types.InlineKeyboardButton("🔗 Link Open", url=link))
+        bot.send_message(m.chat.id, f"📌 {title}\n🔗 {link}\n💰 {rew}৳", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("done_"))
 def done_task(call):
@@ -121,8 +162,8 @@ def done_task(call):
     c2.execute("UPDATE users SET balance = balance +? WHERE user_id=?", (rew, call.from_user.id))
     conn2.commit()
     conn2.close()
-    bot.answer_callback_query(call.id, f"+{rew} টাকা!")
-    bot.send_message(call.message.chat.id, f"✅ Done! {rew} টাকা যোগ হয়েছে।")
+    bot.answer_callback_query(call.id, f"+{rew}৳ যোগ হয়েছে!")
+    bot.send_message(call.message.chat.id, f"✅ {rew}৳ ব্যালেন্সে যোগ হয়েছে।")
 
 @bot.message_handler(func=lambda m: m.text == "⬅️ Back")
 def back(m): bot.send_message(m.chat.id, "Main Menu:", reply_markup=main_menu())
