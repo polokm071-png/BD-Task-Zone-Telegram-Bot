@@ -77,3 +77,17 @@ def remove_force_channel(channel: str):
     with _connect() as conn:
         conn.execute("DELETE FROM force_channels WHERE channel = ?", (channel,))
         conn.commit()
+def register_eligible_user(*args, **kwargs):
+    return True
+
+def is_eligible_user(*args, **kwargs):
+    return True
+
+def get_eligible_users(*args, **kwargs):
+    return []
+
+def is_user_joined(*args, **kwargs):
+    return True
+
+def set_user_joined(*args, **kwargs):
+    return True    
