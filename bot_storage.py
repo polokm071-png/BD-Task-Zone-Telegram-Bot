@@ -1,111 +1,79 @@
-"""Small SQLite store for force-join settings and eligible broadcast users."""
-
+"""Permanent storage - MongoDB + SQLite fallback"""
 import os
 import sqlite3
 from collections.abc import Iterable
 
-
-DATABASE_PATH = os.getenv("BOT_DATABASE_PATH", "bot_data.sqlite3")
+MONGODB_URI = os.getenv("MONGODB_URI")
+DATABASE_PATH = os.getenv("BOT_DATABASE_PATH", "/tmp/bot_database.db")
 DEFAULT_FORCE_CHANNELS = ("@onlinejob10p",)
 
+USE_MONGO = False
+mongo_db = None
 
-def _connect() -> sqlite3.Connection:
+if MONGODB_URI:
+    try:
+        from pymongo import MongoClient
+        client = MongoClient(MONGODB_URI)
+        mongo_db = client["bd_task_zone"]
+        USE_MONGO = True
+        print("✅ MongoDB Connected")
+    except Exception as e:
+        print(f"MongoDB failed: {e}")
+
+def _connect():
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
     return connection
 
-
-def initialize_storage() -> None:
+def initialize_storage():
+    if USE_MONGO:
+        if mongo_db["force_channels"].count_documents({}) == 0:
+            for ch in DEFAULT_FORCE_CHANNELS:
+                mongo_db["force_channels"].update_one({"channel": ch}, {"$set": {"channel": ch}}, upsert=True)
+        return
     with _connect() as connection:
-        connection.execute(
-            """
+        connection.execute("""
             CREATE TABLE IF NOT EXISTS force_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channel TEXT NOT NULL UNIQUE
             )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS eligible_users (
-                user_id INTEGER PRIMARY KEY
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS bot_metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-            """
-        )
-        seeded = connection.execute(
-            "SELECT 1 FROM bot_metadata WHERE key = 'default_channels_seeded'"
-        ).fetchone()
-        if seeded is None:
-            connection.executemany(
-                "INSERT INTO force_channels (channel) VALUES (?)",
-                ((channel,) for channel in DEFAULT_FORCE_CHANNELS),
-            )
-            connection.execute(
-                "INSERT INTO bot_metadata (key, value) "
-                "VALUES ('default_channels_seeded', 'true')"
-            )
+        """)
+        for ch in DEFAULT_FORCE_CHANNELS:
+            connection.execute("INSERT OR IGNORE INTO force_channels (channel) VALUES (?)", (ch,))
+        connection.commit()
 
+def get_force_channels():
+    if USE_MONGO:
+        return [doc["channel"] for doc in mongo_db["force_channels"].find()]
+    with _connect() as conn:
+        rows = conn.execute("SELECT channel FROM force_channels").fetchall()
+        return [r["channel"] for r in rows]
 
-def get_force_channels() -> list[str]:
-    with _connect() as connection:
-        rows = connection.execute(
-            "SELECT channel FROM force_channels ORDER BY id"
-        ).fetchall()
-    return [row["channel"] for row in rows]
+def set_force_channels(channels):
+    channels = list(channels)
+    if USE_MONGO:
+        mongo_db["force_channels"].delete_many({})
+        for ch in channels:
+            mongo_db["force_channels"].insert_one({"channel": ch})
+        return
+    with _connect() as conn:
+        conn.execute("DELETE FROM force_channels")
+        for ch in channels:
+            conn.execute("INSERT INTO force_channels (channel) VALUES (?)", (ch,))
+        conn.commit()
 
+def add_force_channel(channel: str):
+    if USE_MONGO:
+        mongo_db["force_channels"].update_one({"channel": channel}, {"$set": {"channel": channel}}, upsert=True)
+        return
+    with _connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO force_channels (channel) VALUES (?)", (channel,))
+        conn.commit()
 
-def set_force_channels(channels: Iterable[str]) -> None:
-    with _connect() as connection:
-        connection.execute("DELETE FROM force_channels")
-        connection.executemany(
-            "INSERT OR IGNORE INTO force_channels (channel) VALUES (?)",
-            ((channel,) for channel in channels),
-        )
-
-
-def add_force_channel(channel: str) -> None:
-    with _connect() as connection:
-        connection.execute(
-            "INSERT OR IGNORE INTO force_channels (channel) VALUES (?)",
-            (channel,),
-        )
-
-
-def remove_force_channel(channel: str) -> None:
-    with _connect() as connection:
-        connection.execute(
-            "DELETE FROM force_channels WHERE channel = ?",
-            (channel,),
-        )
-
-
-def register_eligible_user(user_id: int) -> None:
-    with _connect() as connection:
-        connection.execute(
-            "INSERT OR IGNORE INTO eligible_users (user_id) VALUES (?)",
-            (user_id,),
-        )
-
-
-def get_eligible_users() -> list[int]:
-    with _connect() as connection:
-        rows = connection.execute(
-            "SELECT user_id FROM eligible_users ORDER BY user_id"
-        ).fetchall()
-    return [row["user_id"] for row in rows]
-
-
-def remove_eligible_user(user_id: int) -> None:
-    with _connect() as connection:
-        connection.execute(
-            "DELETE FROM eligible_users WHERE user_id = ?",
-            (user_id,),
-        )
+def remove_force_channel(channel: str):
+    if USE_MONGO:
+        mongo_db["force_channels"].delete_one({"channel": channel})
+        return
+    with _connect() as conn:
+        conn.execute("DELETE FROM force_channels WHERE channel = ?", (channel,))
+        conn.commit()
