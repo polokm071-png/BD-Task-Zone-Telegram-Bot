@@ -1,5 +1,4 @@
-python-telegram-bot==20.7
-pyTelegramBotAPI==4.14.0
-pymongo==4.6.0
-Flask==2.3.3
-dnspython==2.4.2
+pyTelegramBotAPI
+pymongo
+Flask
+python-dotenv
