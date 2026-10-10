@@ -52,6 +52,9 @@ def cb(c):
     bot.answer_callback_query(c.id)
     bot.send_message(c.message.chat.id,f"📢 {c.data} Task: t.me/COINZOBD Join করে Screenshot দিন")
 
+bot.remove_webhook()
+import time; time.sleep(2)
+
 if __name__=="__main__":
     threading.Thread(target=run_flask).start()
     bot.infinity_polling()
