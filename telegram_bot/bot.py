@@ -4,12 +4,6 @@ import threading, os
 from pymongo import MongoClient
 
 TOKEN=os.getenv("BOT_TOKEN")
-import telebot
-from flask import Flask
-import threading, os
-from pymongo import MongoClient
-
-TOKEN=os.getenv("BOT_TOKEN")
 ADMIN_ID=6654817819
 DATABASE_URL=os.getenv("DATABASE_URL")
 
