@@ -5,6 +5,17 @@ TOKEN=os.environ.get("BOT_TOKEN")
 ADMIN_ID=6654817819
 bot=telebot.TeleBot(TOKEN)
 app=Flask(__name__)
+FORCE_CHANNEL_1 = "@COINZOBD"
+FORCE_CHANNEL_2 = "@onlinejob10p"
+def check_force_join(user_id):
+    try:
+        for ch in [FORCE_CHANNEL_1, FORCE_CHANNEL_2]:
+            m = bot.get_chat_member(ch, user_id)
+            if m.status in ["left", "kicked"]:
+                return False
+        return True
+    except:
+        return True
 conn=sqlite3.connect('bot.db', check_same_thread=False)
 c=conn.cursor()
 c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL, ref_by INTEGER)')
