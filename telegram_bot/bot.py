@@ -57,11 +57,19 @@ def cancel_keyboard():
     return m
 user_data={}
 user_platform_choice={}
-user_task_time={}
+user_task_
 @bot.message_handler(commands=['start'])
 def start(m):
+    # --- FORCE JOIN CHECK ---
+    if not check_force_join(m.from_user.id):
+        mk = telebot.types.InlineKeyboardMarkup()
+        mk.add(telebot.types.InlineKeyboardButton("📢 Channel 1 Join", url="https://t.me/COINZOBD"))
+        mk.add(telebot.types.InlineKeyboardButton("📢 Channel 2 Join", url="https://t.me/onlinejob10p"))
+        mk.add(telebot.types.InlineKeyboardButton("✅ Joined - Click Again", url=f"https://t.me/{bot.get_me().username}?start=start"))
+        bot.send_message(m.chat.id, "⚠️ বট ব্যবহার করতে হলে আগে আমাদের 2 টা চ্যানেলে Join করতে হবে।\n\nJoin করে ✅ Joined বাটনে ক্লিক করো।", reply_markup=mk)
+        return
+
     uid=m.from_user.id
-    c.execute("SELECT * FROM users WHERE user_id=?", (uid,))
     if not c.fetchone():
         ref=None
         if len(m.text.split())>1:
