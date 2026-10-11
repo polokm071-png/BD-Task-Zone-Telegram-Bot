@@ -29,12 +29,17 @@ def db(q, params=(), fetch=False, one=False):
     return res
 
 def check_force_join(user_id):
+    if user_id == ADMIN_ID:
+        return True
     try:
         for ch in [FORCE_CHANNEL_1, FORCE_CHANNEL_2]:
-            m=bot.get_chat_member(ch, user_id)
-            if m.status in ["left","kicked"]: return False
+            m=bot.get_chat_member(f"@{ch}", user_id)
+            if m.status in ["left","kicked"]:
+                return False
         return True
-    except: return True
+    except Exception as e:
+        print(f"Force error: {e}")
+        return False
 
 db('''CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance INTEGER DEFAULT 0, ref_by BIGINT)''')
 db('''CREATE TABLE IF NOT EXISTS tasks (id SERIAL PRIMARY KEY, platform TEXT, action TEXT, title TEXT, link TEXT, reward INTEGER)''')
