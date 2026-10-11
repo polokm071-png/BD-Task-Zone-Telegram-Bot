@@ -10,8 +10,8 @@ DATABASE_URL=os.getenv("DATABASE_URL") or "postgresql://neondb_owner:npg_fc1xXUI
 
 bot=telebot.TeleBot(TOKEN)
 app=Flask(__name__)
-FORCE_CHANNEL_1 = "@COINZOBD"
-FORCE_CHANNEL_2 = "@onlinejob10p"
+FORCE_CHANNEL_1 = "COINZOBD"
+FORCE_CHANNEL_2 = "onlinejob10p"
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
