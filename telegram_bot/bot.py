@@ -5,7 +5,7 @@ import psycopg2
 import psycopg2.extras
 
 TOKEN=os.getenv("BOT_TOKEN")
-ADMIN_ID=6634817819
+ADMIN_ID=6654817819
 DATABASE_URL=os.getenv("DATABASE_URL") or "postgresql://neondb_owner:npg_fc1xXUI3ztCY@ep-delicate-breeze-b5wdo1o5-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 bot=telebot.TeleBot(TOKEN)
