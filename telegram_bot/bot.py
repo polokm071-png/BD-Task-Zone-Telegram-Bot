@@ -201,8 +201,11 @@ def bal(m):
     b=c.fetchone()
     bot.send_message(m.chat.id, f"💰 {b[0] if b else 0:.2f}৳", reply_markup=main_menu())
 @bot.message_handler(func=lambda m: "রেফার" in m.text)
-def ref(m):
-    link=f"https://t.me/BDTaskZoneBD_bot?start={m.from_user.id}"
+def ref(m):    try:
+        username = bot.get_me().username
+    except:
+        username = "bdtask_zone_2026_bot"
+    link=f"https://t.me/{username}?start={m.from_user.id}"
     c.execute("SELECT COUNT(*) FROM users WHERE ref_by=?", (m.from_user.id,))
     count=c.fetchone()[0]
     bot.send_message(m.chat.id, f"👥 Link: {link}\nTotal: {count}\nJoin 2৳, 10%,5%,2.5%", reply_markup=main_menu())
