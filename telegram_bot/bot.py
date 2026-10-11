@@ -214,11 +214,12 @@ def done_task(c):
     bot.send_message(c.message.chat.id, f"✅ +{task['reward']}৳ Added!")
 
 @bot.message_handler(func=lambda m: m.text=="💸 উইথড্র")
-u=db("SELECT balance FROM users WHERE user_id=%s", (m.from_user.id,), one=True)
+def wd(m):
+    u=db("SELECT balance FROM users WHERE user_id=%s", (m.from_user.id,), one=True)
     b=u['balance'] if u else 0
     if b<40: bot.send_message(m.chat.id, f"❌ 40৳ লাগবে, আছে {b}৳"); return
     rc=db("SELECT COUNT(*) as c FROM users WHERE ref_by=%s", (m.from_user.id,), one=True)['c']
-    if rc<5: bot.send_message(m.chat.id, f"❌ 5টা রেফার লাগবে, আছে {rc}টা"); return
+    if rc<5: bot.send_message(m.chat.id, f"❌ 5টা রেফার লাগবে, আছে {rc}টি"); return
     bot.send_message(m.chat.id, "Method বেছে নাও Bkash/Nagad:", reply_markup=cancel_keyboard())
     user_data[m.from_user.id]={'step':'wd_method'}
 @bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='wd_method')
