@@ -54,12 +54,12 @@ def start(m):
                     ref = ref_id
                     users.update_one({"_id": ref_id}, {"$inc": {"balance": 2, "refer_count": 1}})
             except: pass
+
         users.insert_one({
             "_id": uid,
             "balance": 0.0,
             "refer_count": 0,
-            "referred_by": ref,
-            "referred_l2": users.find_one({"_id": ref}).get("referred_by") if ref and users.find_one({"_id": ref}) else None
+            "referred_by": ref
         })
 
     if not is_joined(uid):
@@ -75,7 +75,7 @@ def start(m):
 @bot.message_handler(commands=['admin'])
 def admin_p(m):
     if m.from_user.id == ADMIN_ID:
-        bot.send_message(m.chat.id, "Admin Panel ON 🔒 Data Protected", reply_markup=admin_menu())
+        bot.send_message(m.chat.id, "Admin Panel ON 🔒\nData Protected Mode", reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: m.text == "BALANCE")
 def bal(m):
@@ -88,7 +88,7 @@ def bal(m):
 def refer(m):
     uid = m.from_user.id
     link = f"https://t.me/{bot.get_me().username}?start={uid}"
-    bot.send_message(m.chat.id, f"👥 Refer Link:\n{link}\n\n💰 Per Refer 2 Taka Instant\n🎁 Task Commission: 10% / 5% / 2.5%")
+    bot.send_message(m.chat.id, f"👥 Your Refer Link:\n{link}\n\n💰 Per Refer: 2 Taka Instant\n🎁 Task Commission: 10% / 5% / 2.5%")
 
 @bot.message_handler(func=lambda m: m.text == "KAJ")
 def kaj(m):
@@ -114,19 +114,31 @@ def withdraw(m):
     if bal < 40:
         bot.send_message(m.chat.id, f"❌ Balance kom! {bal} Taka ache, 40 Taka lagbe")
         return
-    if ref < 5:
-        bot.send_message(m.chat.id, f"❌ Refer kom! {ref} ta ache, 5 ta lagbe")
-        return
+
+    # --- FIRST WITHDRAW LOGIC ---
+    already_withdraw = withdraws.find_one({"user_id": uid})
+    if not already_withdraw:
+        if ref < 5:
+            bot.send_message(m.chat.id, f"❌ প্রথম Withdraw এর জন্য 5 Refer লাগবে!\nতোমার আছে {ref} টা, আরো {5-ref} টা লাগবে")
+            return
 
     fee = round(bal * 0.05, 2)
     get_amt = round(bal - fee, 2)
 
     users.update_one({"_id": uid}, {"$set": {"balance": 0.0}})
-    withdraws.insert_one({"user_id": uid, "username": m.from_user.username, "total": bal, "fee": fee, "get": get_amt, "status": "pending", "time": time.time()})
+    withdraws.insert_one({
+        "user_id": uid,
+        "username": m.from_user.username,
+        "total": bal,
+        "fee": fee,
+        "get": get_amt,
+        "status": "pending",
+        "time": time.time()
+    })
 
-    bot.send_message(m.chat.id, f"✅ Withdraw Request Success!\n\nTotal: {bal} Taka\nFee 5%: {fee} Taka\nYou Will Get: {get_amt} Taka\nBalance: 0.0 Taka\n\n24h er moddhe pabe.", reply_markup=get_main_menu())
+    bot.send_message(m.chat.id, f"✅ Withdraw Success!\n\nTotal: {bal} Taka\nFee 5%: {fee} Taka\nYou Get: {get_amt} Taka\nBalance Now: 0.0 Taka", reply_markup=get_main_menu())
     try:
-        bot.send_message(ADMIN_ID, f"🔔 NEW WITHDRAW\nUser: {uid} @{m.from_user.username}\nTotal: {bal}\nFee: {fee}\nGet: {get_amt}")
+        bot.send_message(ADMIN_ID, f"🔔 NEW WITHDRAW\nUser: {uid}\nTotal: {bal} | Fee: {fee} | Get: {get_amt}\nFirst Time: {'No' if already_withdraw else 'Yes'}")
     except: pass
 
 @bot.message_handler(func=lambda m: m.text == "STAT")
@@ -135,7 +147,7 @@ def stat(m):
     total_users = users.count_documents({})
     total_bal = sum([x.get("balance",0) for x in users.find()])
     pending_w = withdraws.count_documents({"status": "pending"})
-    bot.send_message(m.chat.id, f"📊 STAT\nUsers: {total_users}\nTotal Balance: {round(total_bal,2)}\nPending Withdraw: {pending_w}")
+    bot.send_message(m.chat.id, f"📊 STAT\nUsers: {total_users}\nTotal Balance: {round(total_bal,2)}\nPending: {pending_w}")
 
 @bot.message_handler(func=lambda m: m.text == "WITHDRAW LIST")
 def wlist(m):
@@ -146,13 +158,13 @@ def wlist(m):
         return
     msg = "📋 Pending Withdraw:\n\n"
     for w in pending:
-        msg += f"ID: {w['user_id']} | Total: {w['total']} | Get: {w['get']} | @{w.get('username','')}\n"
+        msg += f"ID: {w['user_id']} | Get: {w['get']} | @{w.get('username','')}\n"
     bot.send_message(m.chat.id, msg)
 
 @bot.message_handler(func=lambda m: m.text == "TASK ADD")
 def task_add_start(m):
     if m.from_user.id!= ADMIN_ID: return
-    bot.send_message(m.chat.id, "Task er Text dao:", reply_markup=cancel_menu())
+    bot.send_message(m.chat.id, "Task Text dao:", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, task_add_link)
 
 def task_add_link(m):
@@ -175,10 +187,8 @@ def task_save(m, text, link):
     if m.text == "❌ Cancel":
         bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu())
         return
-    try:
-        reward = float(m.text)
-    except:
-        reward = 1.0
+    try: reward = float(m.text)
+    except: reward = 1.0
     tasks.insert_one({"text": text, "link": link, "reward": reward, "time": time.time()})
     bot.send_message(m.chat.id, f"✅ Task Added: {reward} Taka", reply_markup=admin_menu())
 
@@ -196,17 +206,13 @@ def callback(c):
             bot.answer_callback_query(c.id, "Join koro nai!", show_alert=True)
 
     elif c.data.startswith("done_"):
-        task_id = c.data.split("_")[1]
-        # এখানে তুমি চাইলে Task Complete Logic Add করতে পারো
-        # আপাতত Simple Reward System
         uid = c.from_user.id
-        t = tasks.find_one({"_id": int(task_id)}) if task_id.isdigit() else tasks.find_one({}, sort=[("_id", -1)])
+        t = tasks.find_one({}, sort=[("time", -1)])
         if not t: return
-
         reward = t.get("reward", 1)
+
         users.update_one({"_id": uid}, {"$inc": {"balance": reward}})
 
-        # 3 Level Commission
         u = users.find_one({"_id": uid})
         if u and u.get("referred_by"):
             l1 = u.get("referred_by")
@@ -220,7 +226,8 @@ def callback(c):
                     l3 = u2.get("referred_by")
                     users.update_one({"_id": l3}, {"$inc": {"balance": round(reward*0.025,2)}})
 
-        bot.send_message(c.message.chat.id, f"✅ Task Done! {reward} Taka Added\nNew Balance: {round(users.find_one({'_id': uid}).get('balance',0),2)} Taka")
+        nb = round(users.find_one({"_id": uid}).get("balance",0),2)
+        bot.send_message(c.message.chat.id, f"✅ Task Done! +{reward} Taka\nNew Balance: {nb} Taka")
 
-print("Bot Running - Protected Mode")
+print("Bot Running - Protected + First Withdraw Logic")
 bot.infinity_polling()
