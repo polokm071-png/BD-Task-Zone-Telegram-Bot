@@ -1,303 +1,188 @@
-import os
-import threading
-from flask import Flask
+import os, telebot
 from pymongo import MongoClient
-from datetime import datetime
-import telebot
+import uuid
 
-web_app = Flask(__name__)
-@web_app.route('/')
-def home(): return "Bot Live - BD Task Zone"
-
-def run_web():
-    web_app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8000)))
-
-threading.Thread(target=run_web, daemon=True).start()
-
-TOKEN = os.getenv("BOT_TOKEN")
-MONGO = os.getenv("MONGO_URI")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-CHANNELS = ["@COINZOBD", "@onlinejob10p"]
 
-bot = telebot.TeleBot(TOKEN)
-client = MongoClient(MONGO)
-db = client['bd_task_zone']
-users_col = db['users']
-tasks_col = db['tasks']
-completed_col = db['completed']
-withdraw_col = db['withdraw']
-go_col = db['go_clicks']
-user_data = {}
+bot = telebot.TeleBot(BOT_TOKEN)
+client = MongoClient(MONGO_URI)
+db = client["bdtaskzone"]
+users = db["users"]
+tasks = db["tasks"]
 
 def get_main_menu():
     mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.add("BALANCE", "REFER")
-    mk.add("KAJ", "WITHDRAW")
+    mk.row("KAJ", "BALANCE")
+    mk.row("REFER", "WITHDRAW")
     return mk
 
 def admin_menu():
     mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.add("TASK ADD", "STAT", "WITHDRAW LIST")
-    mk.add("KAJ", "BALANCE")
+    mk.row("TASK ADD", "STAT", "WITHDRAW LIST")
+    mk.row("KAJ", "BALANCE")
+    mk.row("⬅️ BACK TO USER MENU")
     return mk
 
-def get_upline_chain(user_id, depth=3):
-    chain=[]
-    cur=users_col.find_one({"user_id": user_id})
-    for _ in range(depth):
-        if not cur or "ref_by" not in cur: break
-        ref=cur["ref_by"]
-        if not ref: break
-        chain.append(ref)
-        cur=users_col.find_one({"user_id": ref})
-    return chain
+def cancel_menu():
+    mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    mk.add("❌ Cancel")
+    return mk
 
 def is_joined(user_id):
     try:
-        for ch in CHANNELS:
+        for ch in ["@COINZOBD", "@onlinejob10p"]:
             st = bot.get_chat_member(ch, user_id).status
-            if st in ['left','kicked']: return False
+            if st in ["left", "kicked"]:
+                return False
         return True
-    except: return True
+    except:
+        return True
 
 @bot.message_handler(commands=['start'])
 def start(m):
-    if not users_col.find_one({"user_id": m.from_user.id}):
+    uid = m.from_user.id
+    args = m.text.split()
+    if not users.find_one({"_id": uid}):
         ref = None
-        if len(m.text.split())>1:
+        if len(args) > 1:
             try:
-                ref=int(m.text.split()[1])
-                if ref==m.from_user.id: ref=None
-            except: ref=None
-        users_col.insert_one({"user_id": m.from_user.id, "balance":0, "ref_by": ref, "joined": datetime.now()})
-        if ref:
-            ref_user = users_col.find_one({"user_id": ref})
-            if ref_user:
-                if not completed_col.find_one({"user_id": m.from_user.id, "type": "refer_bonus"}):
-                    users_col.update_one({"user_id": ref}, {"$inc": {"balance": 2}})
-                    completed_col.insert_one({"user_id": m.from_user.id, "type": "refer_bonus", "time": datetime.now()})
+                ref = int(args[1])
+                if ref!= uid and users.find_one({"_id": ref}):
+                    users.update_one({"_id": ref}, {"$inc": {"balance": 2, "refer_count": 1}})
                     try:
-                        new_bal = users_col.find_one({"user_id": ref})['balance']
-                        bot.send_message(ref, f"🎉 Refer Bonus! Ekjon join korse, tumi 2 Taka paicho! 💰\nNew Balance: {round(new_bal,2)} Taka")
+                        bot.send_message(ref, "🎉 1 New Refer! +2 Taka Added!")
                     except: pass
-    if m.from_user.id==ADMIN_ID:
-        bot.send_message(m.chat.id, "Admin Panel Ready ✅", reply_markup=admin_menu())
-    else:
-        if not is_joined(m.from_user.id):
-            mk=telebot.types.InlineKeyboardMarkup()
-            mk.add(telebot.types.InlineKeyboardButton("COINZOBD Join", url="https://t.me/COINZOBD"))
-            mk.add(telebot.types.InlineKeyboardButton("Online Job Join", url="https://t.me/onlinejob10p"))
-            mk.add(telebot.types.InlineKeyboardButton("Joined Done", callback_data="check_join"))
-            bot.send_message(m.chat.id, "2 ta channel join koro, tarpor Joined Done chap dao:", reply_markup=mk)
-            return
-        bot.send_message(m.chat.id, f"Welcome {m.from_user.first_name}! 🎉", reply_markup=get_main_menu())
+            except: pass
+        users.insert_one({"_id": uid, "balance": 0.0, "refer_count": 0, "referred_by": ref})
 
-@bot.callback_query_handler(func=lambda c: c.data=="check_join")
-def check_join(c):
-    if is_joined(c.from_user.id):
-        bot.send_message(c.message.chat.id, "Thanks Joined! ✅", reply_markup=get_main_menu())
-    else:
-        bot.answer_callback_query(c.id, "Join koro nai! Age 2 ta join koro", show_alert=True)
+    if not is_joined(uid):
+        mk = telebot.types.InlineKeyboardMarkup()
+        mk.add(telebot.types.InlineKeyboardButton("COINZOBD Join", url="https://t.me/COINZOBD"))
+        mk.add(telebot.types.InlineKeyboardButton("Online Job Join", url="https://t.me/onlinejob10p"))
+        mk.add(telebot.types.InlineKeyboardButton("Joined Done ✅", callback_data="check_join"))
+        bot.send_message(m.chat.id, "2 ta channel join koro, tarpor Joined Done chap dao:", reply_markup=mk)
+        return
+
+    # ALWAYS Welcome for /start (even for admin)
+    bot.send_message(m.chat.id, f"Welcome {m.from_user.first_name}! 🎉", reply_markup=get_main_menu())
 
 @bot.message_handler(commands=['admin'])
-def admin_cmd(m):
+def admin_panel(m):
     if m.from_user.id!= ADMIN_ID:
-        bot.send_message(m.chat.id, f"⛔ You are not admin!\nYour ID: {m.from_user.id}\nADMIN_ID env: {ADMIN_ID}")
         return
     bot.send_message(m.chat.id, "Admin Panel Ready ✅", reply_markup=admin_menu())
 
-@bot.message_handler(func=lambda m: m.text in ["❌ Cancel", "Cancel"])
-def cancel_handler(m):
-    user_data.pop(m.from_user.id, None)
-    menu = admin_menu() if m.from_user.id==ADMIN_ID else get_main_menu()
-    bot.send_message(m.chat.id, "Canceled! Main Menu:", reply_markup=menu)
-
-@bot.message_handler(func=lambda m: m.text=="TASK ADD")
-def add_task_start(m):
-    if m.from_user.id!=ADMIN_ID: return
-    user_data[m.from_user.id]={'step':'title'}
-    mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.add("❌ Cancel")
-    bot.send_message(m.chat.id, "Task Title dao:", reply_markup=mk)
-
-@bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='title')
-def save_title(m):
-    if m.text=="❌ Cancel": return
-    d=user_data[m.from_user.id]; d['title']=m.text; d['step']='link'
-    bot.send_message(m.chat.id, "Link dao:")
-
-@bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='link')
-def save_link(m):
-    if m.text=="❌ Cancel": return
-    d=user_data[m.from_user.id]; d['link']=m.text; d['step']='reward'
-    bot.send_message(m.chat.id, "Reward koto? Ex: 0.3")
-
-@bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='reward')
-def save_final(m):
-    if m.text=="❌ Cancel": return
-    try:
-        reward=float(m.text)
-        d=user_data[m.from_user.id]
-        new_id=tasks_col.count_documents({})+1
-        tasks_col.insert_one({"id": new_id, "title": d['title'], "link": d['link'], "reward": reward})
-        bot.send_message(m.chat.id, "Task Added! ✅", reply_markup=admin_menu())
-    except Exception as e: bot.send_message(m.chat.id, f"Error: {e}")
-    user_data.pop(m.from_user.id, None)
-
-@bot.message_handler(func=lambda m: m.text=="STAT")
-def stat(m):
-    if m.from_user.id!=ADMIN_ID: return
-    bot.send_message(m.chat.id, f"Users: {users_col.count_documents({})}\nTasks: {tasks_col.count_documents({})}\nPending: {withdraw_col.count_documents({'status':'pending'})}")
-
-@bot.message_handler(func=lambda m: m.text=="BALANCE")
-def bal(m):
-    u=users_col.find_one({"user_id": m.from_user.id})
-    b=u['balance'] if u else 0
-    menu = admin_menu() if m.from_user.id==ADMIN_ID else get_main_menu()
-    bot.send_message(m.chat.id, f"BALANCE: {round(b, 2)} Taka 💰", reply_markup=menu)
-
-@bot.message_handler(func=lambda m: m.text=="REFER")
-def ref(m):
-    cnt=users_col.count_documents({"ref_by": m.from_user.id})
-    bot.send_message(m.chat.id, f"Refer Link: https://t.me/{bot.get_me().username}?start={m.from_user.id}\nTotal Refer: {cnt} jon\nIncome: Per Refer 2 Taka + Task Commission 10%/5%/2.5%")
+@bot.callback_query_handler(func=lambda c: c.data=="check_join")
+def check_join(call):
+    if is_joined(call.from_user.id):
+        bot.send_message(call.message.chat.id, f"Welcome {call.from_user.first_name}! 🎉", reply_markup=get_main_menu())
+    else:
+        bot.answer_callback_query(call.id, "Channel join koro nai!", show_alert=True)
 
 @bot.message_handler(func=lambda m: m.text=="KAJ")
 def kaj(m):
-    tasks=list(tasks_col.find({}))
-    if not tasks:
-        bot.send_message(m.chat.id, "No task available now")
+    if not is_joined(m.from_user.id):
+        start(m); return
+    t = tasks.find_one({"active": True})
+    if not t:
+        bot.send_message(m.chat.id, "Kono kaj nai ekhon!")
         return
-    found=False
-    for t in tasks:
-        if completed_col.find_one({"user_id": m.from_user.id, "task_id": t['id']}): continue
-        found=True
-        mk=telebot.types.InlineKeyboardMarkup()
-        mk.add(telebot.types.InlineKeyboardButton("Go", callback_data=f"go:{t['id']}"))
-        mk.add(telebot.types.InlineKeyboardButton("Done", callback_data=f"done:{t['id']}"))
-        mk.add(telebot.types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_task:{t['id']}"))
-        bot.send_message(m.chat.id, f"📋 {t['title']}\n💰 Reward {t['reward']} Taka", reply_markup=mk)
-        break
-    if not found:
-        bot.send_message(m.chat.id, "All tasks completed! ✅ New task er jonno wait koro", reply_markup=get_main_menu())
+    mk = telebot.types.InlineKeyboardMarkup()
+    mk.add(telebot.types.InlineKeyboardButton("Task Link 🔗", url=t['link']))
+    mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{t['_id']}"))
+    bot.send_message(m.chat.id, f"📋 Task: {t['title']}\n💰 Reward: {t['reward']} Taka", reply_markup=mk)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("go:"))
-def go_task(c):
-    tid=int(c.data.split(":")[1])
-    go_col.update_one({"user_id": c.from_user.id, "task_id": tid}, {"$set": {"time": datetime.now()}}, upsert=True)
-    task=tasks_col.find_one({"id": tid})
-    if task:
-        mk=telebot.types.InlineKeyboardMarkup()
-        mk.add(telebot.types.InlineKeyboardButton("Done", callback_data=f"done:{tid}"))
-        mk.add(telebot.types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_task:{tid}"))
-        bot.send_message(c.message.chat.id, f"🔗 Link: {task['link']}\n⏱ 15 second dekhe Done chapo!", reply_markup=mk)
-        bot.answer_callback_query(c.id, "Link open koro!")
+@bot.callback_query_handler(func=lambda c: c.data.startswith("done_"))
+def done_task(call):
+    tid = call.data.split("_")[1]
+    t = tasks.find_one({"_id": tid})
+    if not t: return
+    u = users.find_one({"_id": call.from_user.id})
+    users.update_one({"_id": call.from_user.id}, {"$inc": {"balance": float(t['reward'])}})
+    # 3 level commission
+    if u and u.get("referred_by"):
+        l1 = users.find_one({"_id": u["referred_by"]})
+        if l1:
+            users.update_one({"_id": l1["_id"]}, {"$inc": {"balance": float(t['reward'])*0.10}})
+            if l1.get("referred_by"):
+                l2 = users.find_one({"_id": l1["referred_by"]})
+                if l2:
+                    users.update_one({"_id": l2["_id"]}, {"$inc": {"balance": float(t['reward'])*0.05}})
+                    if l2.get("referred_by"):
+                        l3 = users.find_one({"_id": l2["referred_by"]})
+                        if l3:
+                            users.update_one({"_id": l3["_id"]}, {"$inc": {"balance": float(t['reward'])*0.025}})
+    bot.send_message(call.message.chat.id, f"✅ Task Completed! +{t['reward']} Taka")
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("done:"))
-def done_task(c):
-    tid=int(c.data.split(":")[1])
-    if completed_col.find_one({"user_id": c.from_user.id, "task_id": tid}):
-        bot.answer_callback_query(c.id, "Already Done"); return
-    go=go_col.find_one({"user_id": c.from_user.id, "task_id": tid})
-    if not go:
-        bot.answer_callback_query(c.id, "Age Go chapo! ❗", show_alert=True)
+@bot.message_handler(func=lambda m: m.text=="BALANCE")
+def bal(m):
+    u = users.find_one({"_id": m.from_user.id})
+    b = round(u["balance"], 2) if u else 0
+    bot.send_message(m.chat.id, f"💰 BALANCE: {b} Taka")
+
+@bot.message_handler(func=lambda m: m.text=="⬅️ BACK TO USER MENU")
+def back_to_user(m):
+    if m.from_user.id==ADMIN_ID:
+        bot.send_message(m.chat.id, f"Welcome {m.from_user.first_name}! 🎉 User Mode:", reply_markup=get_main_menu())
+
+@bot.message_handler(func=lambda m: m.text in ["TASK ADD", "STAT", "WITHDRAW LIST", "REFER", "WITHDRAW"])
+def other(m):
+    if m.from_user.id==ADMIN_ID and m.text in ["TASK ADD", "STAT", "WITHDRAW LIST"]:
+        if m.text=="TASK ADD":
+            bot.send_message(m.chat.id, "Task Title dao:", reply_markup=cancel_menu())
+            bot.register_next_step_handler(m, add_title)
+        elif m.text=="STAT":
+            uc = users.count_documents({})
+            tc = tasks.count_documents({})
+            bot.send_message(m.chat.id, f"📊 Users: {uc}\n📋 Tasks: {tc}\n⏳ Pending: 0")
+        elif m.text=="WITHDRAW LIST":
+            bot.send_message(m.chat.id, "No pending withdraw")
         return
-    diff=(datetime.now() - go['time']).total_seconds()
-    if diff < 15:
-        bot.answer_callback_query(c.id, f"{int(15-diff)}s wait! Pura 15s dekho", show_alert=True)
-        return
-    task=tasks_col.find_one({"id": tid})
-    if not task: return
-    completed_col.insert_one({"user_id": c.from_user.id, "task_id": tid})
-    users_col.update_one({"user_id": c.from_user.id}, {"$inc": {"balance": task['reward']}})
-    rates=[0.10, 0.05, 0.025]
-    uplines=get_upline_chain(c.from_user.id, 3)
-    for i, ref_id in enumerate(uplines):
-        comm=round(task['reward']*rates[i], 3)
-        users_col.update_one({"user_id": ref_id}, {"$inc": {"balance": comm}})
-    bot.send_message(c.message.chat.id, f"✅ {task['reward']} Taka Added!", reply_markup=get_main_menu())
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("cancel_task:"))
-def cancel_task_cb(c):
-    bot.answer_callback_query(c.id, "Canceled")
-    try: bot.delete_message(c.message.chat.id, c.message.message_id)
-    except: pass
-    menu = admin_menu() if c.from_user.id==ADMIN_ID else get_main_menu()
-    bot.send_message(c.message.chat.id, "Task canceled! Main menu:", reply_markup=menu)
+    # user part
+    u = users.find_one({"_id": m.from_user.id})
+    if m.text=="REFER":
+        rc = u["refer_count"] if u and "refer_count" in u else 0
+        bot.send_message(m.chat.id, f"🔗 Tomar Refer Link:\nhttps://t.me/BDTaskZone_bot?start={m.from_user.id}\n👥 Refer Count: {rc}")
+    elif m.text=="WITHDRAW":
+        b = round(u["balance"],2) if u else 0
+        rc = u["refer_count"] if u else 0
+        if b<40 or rc<5:
+            bot.send_message(m.chat.id, f"Withdraw er jonno 40 Taka + 5 Refer lage, ache {b} Taka + {rc} Refer")
+        else:
+            bot.send_message(m.chat.id, "✅ Withdraw request pathano hoyeche!")
 
-@bot.message_handler(func=lambda m: m.text=="WITHDRAW")
-def wd2(m):
-    u=users_col.find_one({"user_id": m.from_user.id})
-    b=u['balance'] if u else 0
-    if b<40: bot.send_message(m.chat.id, f"40 Taka lage, ache {round(b,2)}"); return
-    if users_col.count_documents({"ref_by": m.from_user.id})<5: bot.send_message(m.chat.id, "5 ta refer lage"); return
-    user_data[m.from_user.id]={'step':'wd_method'}
-    mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.add("❌ Cancel")
-    bot.send_message(m.chat.id, "Method lekho Bkash/Nagad:", reply_markup=mk)
+def add_title(m):
+    if m.text=="❌ Cancel":
+        bot.send_message(m.chat.id, "Canceled! Main Menu:", reply_markup=admin_menu()); return
+    title = m.text
+    bot.send_message(m.chat.id, "Task Link dao:", reply_markup=cancel_menu())
+    bot.register_next_step_handler(m, lambda mm: add_link(mm, title))
 
-@bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='wd_method')
-def wd_method(m):
-    if m.text=="❌ Cancel": return
-    user_data[m.from_user.id]['method']=m.text
-    user_data[m.from_user.id]['step']='wd_number'
-    bot.send_message(m.chat.id, "Number dao:")
+def add_link(m, title):
+    if m.text=="❌ Cancel":
+        bot.send_message(m.chat.id, "Canceled! Main Menu:", reply_markup=admin_menu()); return
+    link = m.text
+    bot.send_message(m.chat.id, "Reward koto? (ex: 0.5):", reply_markup=cancel_menu())
+    bot.register_next_step_handler(m, lambda mm: add_reward(mm, title, link))
 
-@bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='wd_number')
-def wd_number(m):
-    if m.text=="❌ Cancel": return
-    user_data[m.from_user.id]['number']=m.text
-    user_data[m.from_user.id]['step']='wd_amount'
-    bot.send_message(m.chat.id, "Amount koto?")
-
-@bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='wd_amount')
-def wd_amount(m):
-    if m.text=="❌ Cancel": return
+def add_reward(m, title, link):
+    if m.text=="❌ Cancel":
+        bot.send_message(m.chat.id, "Canceled! Main Menu:", reply_markup=admin_menu()); return
     try:
-        amt=float(m.text)
-        u=users_col.find_one({"user_id": m.from_user.id})
-        if amt>u['balance']: bot.send_message(m.chat.id, "Balance kom"); return
-        withdraw_col.insert_one({"user_id": m.from_user.id, "amount": amt, "method": user_data[m.from_user.id]['method'], "number": user_data[m.from_user.id]['number'], "status":"pending", "time": datetime.now()})
-        users_col.update_one({"user_id": m.from_user.id}, {"$inc": {"balance": -amt}})
-        bot.send_message(ADMIN_ID, f"New Withdraw\nUser: {m.from_user.id}\nAmount: {amt}")
-        bot.send_message(m.chat.id, f"{amt} Taka Withdraw Request Sent! ✅", reply_markup=get_main_menu())
-    except: bot.send_message(m.chat.id, "Sothik amount dao")
-    user_data.pop(m.from_user.id, None)
+        rew = float(m.text)
+        tasks.insert_one({"_id": str(uuid.uuid4())[:8], "title": title, "link": link, "reward": rew, "active": True})
+        bot.send_message(m.chat.id, "✅ Task Added!", reply_markup=admin_menu())
+    except:
+        bot.send_message(m.chat.id, "Sothik number dao!", reply_markup=cancel_menu())
+        bot.register_next_step_handler(m, lambda mm: add_reward(mm, title, link))
 
-@bot.message_handler(func=lambda m: m.text=="WITHDRAW LIST")
-def wd_list(m):
-    if m.from_user.id!=ADMIN_ID: return
-    pending=list(withdraw_col.find({"status":"pending"}))
-    if not pending: bot.send_message(m.chat.id, "No pending"); return
-    for w in pending:
-        mk=telebot.types.InlineKeyboardMarkup()
-        mk.add(telebot.types.InlineKeyboardButton("Approve", callback_data=f"wd_approve:{str(w['_id'])}"), telebot.types.InlineKeyboardButton("Reject", callback_data=f"wd_reject:{str(w['_id'])}"))
-        bot.send_message(m.chat.id, f"User: {w['user_id']}\nAmount: {w['amount']}\nMethod: {w['method']}\nNumber: {w['number']}", reply_markup=mk)
+@bot.message_handler(func=lambda m: m.text=="❌ Cancel")
+def cancel(m):
+    mk = admin_menu() if m.from_user.id==ADMIN_ID else get_main_menu()
+    bot.send_message(m.chat.id, "Canceled! Main Menu:", reply_markup=mk)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("wd_approve:"))
-def wd_approve(c):
-    if c.from_user.id!=ADMIN_ID: return
-    wid=c.data.split(":")[1]
-    from bson import ObjectId
-    w=withdraw_col.find_one({"_id": ObjectId(wid)})
-    if not w: return
-    withdraw_col.update_one({"_id": ObjectId(wid)}, {"$set": {"status":"approved"}})
-    try: bot.send_message(w['user_id'], f"Withdraw Approved {w['amount']} Taka ✅")
-    except: pass
-    bot.answer_callback_query(c.id, "Approved")
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("wd_reject:"))
-def wd_reject(c):
-    if c.from_user.id!=ADMIN_ID: return
-    wid=c.data.split(":")[1]
-    from bson import ObjectId
-    w=withdraw_col.find_one({"_id": ObjectId(wid)})
-    if not w: return
-    withdraw_col.update_one({"_id": ObjectId(wid)}, {"$set": {"status":"rejected"}})
-    users_col.update_one({"user_id": w['user_id']}, {"$inc": {"balance": w['amount']}})
-    try: bot.send_message(w['user_id'], f"Withdraw Rejected, {w['amount']} Taka refund")
-    except: pass
-    bot.answer_callback_query(c.id, "Rejected & Refunded")
-
-print("Bot Started")
-bot.remove_webhook()
-bot.infinity_polling(skip_pending=True)
+print("Bot Started...")
+bot.infinity_polling()
