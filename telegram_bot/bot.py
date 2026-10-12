@@ -14,14 +14,13 @@ db = client["bdtaskzone"]
 users = db["users"]
 tasks = db["tasks"]
 withdraws = db["withdraws"]
-task_done = db["task_done"] # NEW
+task_done = db["task_done"] # 1 ID = 1 Task er jonno
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Keep Alive for 24h
 app = Flask('')
 @app.route('/')
-def home(): return "Bot Live 24h"
+def home(): return "Bot Running 24h"
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive():
     t = Thread(target=run)
@@ -82,19 +81,17 @@ def start(m):
 
 ✅ BD Task Zone এ স্বাগতম!
 
-⚠️ গুরুত্বপূর্ণ সতর্কবার্তা ⚠️
+⚠️ সতর্কবার্তা ⚠️
 একই WiFi / একই ফোন থেকে ২ টা ID দিয়ে কাজ করবেন না।
 তাহলে ২ টা ID ই ব্যান হয়ে যাবে এবং পেমেন্ট পাবেন না।
+কোম্পানি ১ টা IP থেকে ২৪ ঘন্টায় ১ বার টাকা দেয়।"""
 
-কারণ কোম্পানি ১ টা IP থেকে ২৪ ঘন্টায় ১ বার টাকা দেয়।
-
-👉 ১ টা ID দিয়ে সৎ ভাবে কাজ করুন।"""
     bot.send_message(m.chat.id, welcome_text, reply_markup=get_main_menu())
 
 @bot.message_handler(commands=['admin'])
 def admin_p(m):
     if m.from_user.id == ADMIN_ID:
-        bot.send_message(m.chat.id, "Admin Panel ON 🔒 Data Protected", reply_markup=admin_menu())
+        bot.send_message(m.chat.id, "Admin Panel ON 🔒", reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: m.text == "BALANCE")
 def bal(m):
@@ -115,39 +112,49 @@ def refer(m):
 def kaj(m):
     t = tasks.find_one({}, sort=[("time", -1)])
     if not t:
-        bot.send_message(m.chat.id, "Kono kaj nai ekhon!")
+        bot.send_message(m.chat.id, "এখন কোনো কাজ নাই, নতুন কাজের জন্য ওয়েট করো 🙏")
         return
+
+    task_id = str(t["_id"])
+    if task_done.find_one({"user_id": m.from_user.id, "task_id": task_id}):
+        bot.send_message(m.chat.id, "এখন কোনো কাজ নাই, নতুন কাজের জন্য ওয়েট করো 🙏\n\n✅ তুমি আজকের কাজটা করে ফেলেছো!")
+        return
+
     mk = telebot.types.InlineKeyboardMarkup()
-    mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link")))
+    mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link", "https://t.me/COINZOBD")))
     mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{str(t['_id'])}"))
-    bot.send_message(m.chat.id, f"📝 TASK:\n{t.get('text')}\n\nReward: {t.get('reward',1)} Taka", reply_markup=mk)
+    bot.send_message(m.chat.id, f"📝 TASK:\n{t.get('text','Task koro')}\n\nReward: {t.get('reward',1)} Taka\n\n⏰ 15 second dekhe Done chapo!", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: m.text == "WITHDRAW")
 def withdraw(m):
     uid = m.from_user.id
     u = users.find_one({"_id": uid})
-    if not u: return
+    if not u:
+        bot.send_message(m.chat.id, "First /start dao!"); return
     bal_val = round(u.get("balance", 0), 2)
     ref = u.get("refer_count", 0)
     if bal_val < 40:
-        bot.send_message(m.chat.id, f"❌ Balance kom! {bal_val} Taka ache, 40 Taka lagbe")
-        return
+        bot.send_message(m.chat.id, f"❌ Balance kom! {bal_val} Taka ache, 40 Taka lagbe"); return
     already_withdraw = withdraws.find_one({"user_id": uid})
     if not already_withdraw:
         if ref < 5:
-            bot.send_message(m.chat.id, f"❌ প্রথম Withdraw এর জন্য 5 Refer লাগবে!\nতোমার আছে {ref} টা")
-            return
+            bot.send_message(m.chat.id, f"❌ প্রথম Withdraw এর জন্য 5 Refer লাগবে!\nতোমার আছে {ref} টা, আরো {5-ref} টা লাগবে\n\n2nd বার থেকে Refer লাগবে না ✅"); return
     fee = round(bal_val * 0.05, 2)
     get_amt = round(bal_val - fee, 2)
     users.update_one({"_id": uid}, {"$set": {"balance": 0.0}})
     withdraws.insert_one({"user_id": uid, "username": m.from_user.username, "total": bal_val, "fee": fee, "get": get_amt, "status": "pending", "time": time.time()})
-    bot.send_message(m.chat.id, f"✅ Withdraw Success!\nYou Will Get: {get_amt} Taka")
+    bot.send_message(m.chat.id, f"✅ Withdraw Request Success!\n\nTotal: {bal_val} Taka\nFee 5%: {fee} Taka\nYou Will Get: {get_amt} Taka", reply_markup=get_main_menu())
+    try:
+        bot.send_message(ADMIN_ID, f"🔔 NEW WITHDRAW\nUser: {uid} @{m.from_user.username}\nTotal: {bal_val} | Get: {get_amt}")
+    except: pass
 
 @bot.message_handler(func=lambda m: m.text == "STAT")
 def stat(m):
     if m.from_user.id!= ADMIN_ID: return
     total_users = users.count_documents({})
-    bot.send_message(m.chat.id, f"📊 Users: {total_users}")
+    total_bal = sum([x.get("balance", 0) for x in users.find()])
+    pending_w = withdraws.count_documents({"status": "pending"})
+    bot.send_message(m.chat.id, f"📊 STAT\nUsers: {total_users}\nTotal Balance: {round(total_bal,2)}\nPending Withdraw: {pending_w}")
 
 @bot.message_handler(func=lambda m: m.text == "WITHDRAW LIST")
 def wlist(m):
@@ -155,8 +162,8 @@ def wlist(m):
     pending = list(withdraws.find({"status": "pending"}).limit(20))
     if not pending:
         bot.send_message(m.chat.id, "No Pending Withdraw ✅"); return
-    msg = "📋 Pending:\n\n"
-    for w in pending: msg += f"ID: {w['user_id']} | Get: {w['get']}\n"
+    msg = "📋 Pending Withdraw:\n\n"
+    for w in pending: msg += f"ID: {w['user_id']} | Get: {w['get']} Taka | @{w.get('username','no')}\n"
     bot.send_message(m.chat.id, msg)
 
 @bot.message_handler(func=lambda m: m.text == "TASK ADD")
@@ -166,16 +173,22 @@ def task_add_start(m):
     bot.register_next_step_handler(m, task_add_link)
 
 def task_add_link(m):
+    if m.text == "❌ Cancel":
+        bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
     text = m.text
-    bot.send_message(m.chat.id, "Link dao:")
+    bot.send_message(m.chat.id, "Link dao:", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, lambda x: task_add_reward(x, text))
 
 def task_add_reward(m, text):
+    if m.text == "❌ Cancel":
+        bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
     link = m.text
-    bot.send_message(m.chat.id, "Reward koto?")
+    bot.send_message(m.chat.id, "Reward koto? Ex: 1", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, lambda x: task_save(x, text, link))
 
 def task_save(m, text, link):
+    if m.text == "❌ Cancel":
+        bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
     try: reward = float(m.text)
     except: reward = 1.0
     tasks.insert_one({"text": text, "link": link, "reward": reward, "time": time.time()})
@@ -183,7 +196,8 @@ def task_save(m, text, link):
 
 @bot.message_handler(func=lambda m: m.text == "⬅️ BACK TO USER MENU")
 def back(m):
-    bot.send_message(m.chat.id, "User Mode", reply_markup=get_main_menu())
+    if m.from_user.id == ADMIN_ID:
+        bot.send_message(m.chat.id, "User Mode", reply_markup=get_main_menu())
 
 @bot.callback_query_handler(func=lambda c: True)
 def callback(c):
@@ -192,13 +206,14 @@ def callback(c):
             bot.send_message(c.message.chat.id, f"Welcome {c.from_user.first_name}! 🎉", reply_markup=get_main_menu())
         else:
             bot.answer_callback_query(c.id, "Join koro nai!", show_alert=True)
+
     elif c.data.startswith("done_"):
         uid = c.from_user.id
         t = tasks.find_one({}, sort=[("time", -1)])
         if not t: return
         task_id = str(t["_id"])
         if task_done.find_one({"user_id": uid, "task_id": task_id}):
-            bot.answer_callback_query(c.id, "❌ Ei Task ta agei korecho!", show_alert=True)
+            bot.answer_callback_query(c.id, "❌ তুমি এই কাজটা আগেই করেছো!", show_alert=True)
             return
         reward = t.get("reward", 1)
         users.update_one({"_id": uid}, {"$inc": {"balance": reward}})
@@ -207,9 +222,19 @@ def callback(c):
         if u and u.get("referred_by"):
             l1 = u.get("referred_by")
             users.update_one({"_id": l1}, {"$inc": {"balance": round(reward*0.10, 2)}})
+            u1 = users.find_one({"_id": l1})
+            if u1 and u1.get("referred_by"):
+                l2 = u1.get("referred_by")
+                users.update_one({"_id": l2}, {"$inc": {"balance": round(reward*0.05, 2)}})
+                u2 = users.find_one({"_id": l2})
+                if u2 and u2.get("referred_by"):
+                    l3 = u2.get("referred_by")
+                    users.update_one({"_id": l3}, {"$inc": {"balance": round(reward*0.025, 2)}})
         nb = round(users.find_one({"_id": uid}).get("balance", 0), 2)
         bot.send_message(c.message.chat.id, f"✅ Task Done! +{reward} Taka\nNew Balance: {nb} Taka")
+        try: bot.answer_callback_query(c.id, f"+{reward} Taka Added!")
+        except: pass
 
-print("Bot Running - FINAL SAFE VERSION")
+print("Bot Running - FINAL ADJUSTED VERSION")
 keep_alive()
 bot.infinity_polling()
