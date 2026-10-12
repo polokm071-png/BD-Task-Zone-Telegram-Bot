@@ -1,15 +1,18 @@
+import os
 import threading
 from flask import Flask
+from pymongo import MongoClient
+from datetime import datetime
+import telebot
+
 web_app = Flask(__name__)
 @web_app.route('/')
 def home(): return "Bot Live"
-def run_web():
-    web_app.run(host='0.0.0.0', port=int(__import__('os').environ.get("PORT", 8000)))
-threading.Thread(target=run_web, daemon=True).start() telebot
-from pymongo import MongoClient
-from datetime import datetime
-import os
 
+def run_web():
+    web_app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8000)))
+
+threading.Thread(target=run_web, daemon=True).start()
 TOKEN = os.getenv("BOT_TOKEN")
 MONGO = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
