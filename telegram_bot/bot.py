@@ -86,24 +86,36 @@ def check_join(c):
     else:
         bot.answer_callback_query(c.id, "Join koro nai!")
 
+# ---- FIXED PART START ----
+@bot.message_handler(func=lambda m: m.text in ["❌ Cancel", "Cancel", "BACK", "Back"])
+def cancel_handler(m):
+    user_data.pop(m.from_user.id, None)
+    menu = admin_menu() if m.from_user.id==ADMIN_ID else get_main_menu()
+    bot.send_message(m.chat.id, "Canceled! Main Menu:", reply_markup=menu)
+
 @bot.message_handler(func=lambda m: m.text=="TASK ADD")
 def add_task_start(m):
     if m.from_user.id!=ADMIN_ID: return
     user_data[m.from_user.id]={'step':'title'}
-    bot.send_message(m.chat.id, "Task Title dao:")
+    mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    mk.add("❌ Cancel")
+    bot.send_message(m.chat.id, "Task Title dao:", reply_markup=mk)
 
 @bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='title')
 def save_title(m):
+    if m.text=="❌ Cancel": return
     d=user_data[m.from_user.id]; d['title']=m.text; d['step']='link'
     bot.send_message(m.chat.id, "Link dao:")
 
 @bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='link')
 def save_link(m):
+    if m.text=="❌ Cancel": return
     d=user_data[m.from_user.id]; d['link']=m.text; d['step']='reward'
-    bot.send_message(m.chat.id, "Reward koto? Ex: 5")
+    bot.send_message(m.chat.id, "Reward koto? Ex: 0.3")
 
 @bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='reward')
 def save_final(m):
+    if m.text=="❌ Cancel": return
     try:
         reward=float(m.text)
         d=user_data[m.from_user.id]
@@ -112,6 +124,70 @@ def save_final(m):
         bot.send_message(m.chat.id, "Task Added!", reply_markup=admin_menu())
     except Exception as e: bot.send_message(m.chat.id, f"Error: {e}")
     user_data.pop(m.from_user.id, None)
+
+@bot.message_handler(func=lambda m: m.text=="KAJ")
+def kaj(m):
+    tasks=list(tasks_col.find({}))
+    if not tasks:
+        bot.send_message(m.chat.id, "No task")
+        return
+    found=False
+    for t in tasks:
+        if completed_col.find_one({"user_id": m.from_user.id, "task_id": t['id']}): continue
+        found=True
+        mk=telebot.types.InlineKeyboardMarkup()
+        mk.add(telebot.types.InlineKeyboardButton("Go", callback_data=f"go:{t['id']}"))
+        mk.add(telebot.types.InlineKeyboardButton("Done", callback_data=f"done:{t['id']}"))
+        mk.add(telebot.types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_task:{t['id']}"))
+        bot.send_message(m.chat.id, f"{t['title']}\nReward {t['reward']} Taka", reply_markup=mk)
+        break
+    if not found:
+        bot.send_message(m.chat.id, "All tasks completed! New task er jonno wait koro", reply_markup=get_main_menu())
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("go:"))
+def go_task(c):
+    tid=int(c.data.split(":")[1])
+    go_col.update_one({"user_id": c.from_user.id, "task_id": tid}, {"$set": {"time": datetime.now()}}, upsert=True)
+    task=tasks_col.find_one({"id": tid})
+    if task:
+        mk=telebot.types.InlineKeyboardMarkup()
+        mk.add(telebot.types.InlineKeyboardButton("Done", callback_data=f"done:{tid}"))
+        mk.add(telebot.types.InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_task:{tid}"))
+        bot.send_message(c.message.chat.id, f"Link: {task['link']}\n15 second dekhe Done chapo!", reply_markup=mk)
+        bot.answer_callback_query(c.id, "Link open koro!")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("done:"))
+def done_task(c):
+    tid=int(c.data.split(":")[1])
+    if completed_col.find_one({"user_id": c.from_user.id, "task_id": tid}):
+        bot.answer_callback_query(c.id, "Already Done"); return
+    go=go_col.find_one({"user_id": c.from_user.id, "task_id": tid})
+    if not go:
+        bot.answer_callback_query(c.id, "Age Go chapo!", show_alert=True)
+        return
+    diff=(datetime.now() - go['time']).total_seconds()
+    if diff < 15:
+        bot.answer_callback_query(c.id, f"{int(15-diff)}s wait! Pura 15s dekho", show_alert=True)
+        return
+    task=tasks_col.find_one({"id": tid})
+    if not task: return
+    completed_col.insert_one({"user_id": c.from_user.id, "task_id": tid})
+    users_col.update_one({"user_id": c.from_user.id}, {"$inc": {"balance": task['reward']}})
+    rates=[0.10, 0.05, 0.025]
+    uplines=get_upline_chain(c.from_user.id, 3)
+    for i, ref_id in enumerate(uplines):
+        comm=task['reward']*rates[i]
+        users_col.update_one({"user_id": ref_id}, {"$inc": {"balance": comm}})
+    bot.send_message(c.message.chat.id, f"{task['reward']} Taka Added! ✅", reply_markup=get_main_menu())
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("cancel_task:"))
+def cancel_task_cb(c):
+    bot.answer_callback_query(c.id, "Canceled")
+    try: bot.delete_message(c.message.chat.id, c.message.message_id)
+    except: pass
+    menu = admin_menu() if c.from_user.id==ADMIN_ID else get_main_menu()
+    bot.send_message(c.message.chat.id, "Task canceled! Main menu:", reply_markup=menu)
+# ---- FIXED PART END ----
 
 @bot.message_handler(func=lambda m: m.text=="STAT")
 def stat(m):
@@ -129,44 +205,6 @@ def bal(m):
 def ref(m):
     cnt=users_col.count_documents({"ref_by": m.from_user.id})
     bot.send_message(m.chat.id, f"Refer Link: https://t.me/{bot.get_me().username}?start={m.from_user.id}\nTotal Refer: {cnt}")
-
-@bot.message_handler(func=lambda m: m.text=="KAJ")
-def kaj(m):
-    tasks=list(tasks_col.find({}))
-    if not tasks: bot.send_message(m.chat.id, "No task"); return
-    for t in tasks:
-        if completed_col.find_one({"user_id": m.from_user.id, "task_id": t['id']}): continue
-        mk=telebot.types.InlineKeyboardMarkup()
-        mk.add(telebot.types.InlineKeyboardButton("Go", callback_data=f"go:{t['id']}"))
-        mk.add(telebot.types.InlineKeyboardButton("Done", callback_data=f"done:{t['id']}"))
-        bot.send_message(m.chat.id, f"{t['title']}\nReward {t['reward']} Taka", reply_markup=mk)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("go:"))
-def go_task(c):
-    tid=int(c.data.split(":")[1])
-    go_col.update_one({"user_id": c.from_user.id, "task_id": tid}, {"$set": {"time": datetime.now()}}, upsert=True)
-    task=tasks_col.find_one({"id": tid})
-    if task: bot.send_message(c.message.chat.id, f"Link: {task['link']}\n15 second dekhe Done chapo!")
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("done:"))
-def done_task(c):
-    tid=int(c.data.split(":")[1])
-    if completed_col.find_one({"user_id": c.from_user.id, "task_id": tid}):
-        bot.answer_callback_query(c.id, "Already Done"); return
-    go=go_col.find_one({"user_id": c.from_user.id, "task_id": tid})
-    if not go: bot.answer_callback_query(c.id, "Age Go chapo!"); return
-    diff=(datetime.now() - go['time']).total_seconds()
-    if diff < 15: bot.answer_callback_query(c.id, f"{int(15-diff)}s wait!"); return
-    task=tasks_col.find_one({"id": tid})
-    if not task: return
-    completed_col.insert_one({"user_id": c.from_user.id, "task_id": tid})
-    users_col.update_one({"user_id": c.from_user.id}, {"$inc": {"balance": task['reward']}})
-    rates=[0.10, 0.05, 0.025]
-    uplines=get_upline_chain(c.from_user.id, 3)
-    for i, ref_id in enumerate(uplines):
-        comm=task['reward']*rates[i]
-        users_col.update_one({"user_id": ref_id}, {"$inc": {"balance": comm}})
-    bot.send_message(c.message.chat.id, f"{task['reward']} Taka Added!")
 
 @bot.message_handler(func=lambda m: m.text=="WITHDRAW")
 def wd2(m):
