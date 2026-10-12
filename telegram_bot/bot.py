@@ -228,4 +228,5 @@ def wd_reject(c):
     bot.answer_callback_query(c.id, "Rejected & Refunded")
 
 print("Bot Started")
-bot.infinity_polling()
+bot.remove_webhook()
+bot.infinity_polling(skip_pending=True)
