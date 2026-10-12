@@ -196,10 +196,27 @@ def kaj(m):
         mk.add(telebot.types.InlineKeyboardButton("✅ Done", callback_data=f"done:{t['id']}"))
         bot.send_message(m.chat.id, f"📝 {t['title']}\n💰 {t['reward']}৳", reply_markup=mk)
 @bot.callback_query_handler(func=lambda c: c.data.startswith("done_"))
+@bot.callback_query_handler(func=lambda c: c.data.startswith("go:"))
+def go_task(c):
+    tid=int(c.data.split("_")[1]) if "_" in c.data else int(c.data.split(":")[1])
+    db_mongo["go_clicks"].update_one({"user_id": c.from_user.id, "task_id": tid}, {"$set": {"time": datetime.now()}}, upsert=True)
+    task=tasks_col.find_one({"id": tid})
+    if task:
+        bot.send_message(c.message.chat.id, f"🔗 Link: {task['link']}\n\n15 সেকেন্ড দেখে তারপর Done চাপো!")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("done:") or c.data.startswith("done_"))
 def done_task(c):
-    tid=int(c.data.split("_")[1])
+    tid=int(c.data.split("_")[1]) if "_" in c.data else int(c.data.split(":")[1])
     if completed_col.find_one({"user_id": c.from_user.id, "task_id": tid}):
         bot.answer_callback_query(c.id, "Done before"); return
+    go=db_mongo["go_clicks"].find_one({"user_id": c.from_user.id, "task_id": tid})
+    if not go:
+        bot.answer_callback_query(c.id, "আগে Go চাপো!"); return
+    diff=(datetime.now() - go['time']).total_seconds()
+    if diff < 15:
+        bot.answer_callback_query(c.id, f"{int(15-diff)}s wait!");
+        bot.send_message(c.message.chat.id, f"⏳ {int(15-diff)} সেকেন্ড পর Done চাপো!")
+        return
     task=tasks_col.find_one({"id": tid})
     if not task: return
     completed_col.insert_one({"user_id": c.from_user.id, "task_id": tid})
@@ -209,9 +226,9 @@ def done_task(c):
     for i, ref_id in enumerate(uplines):
         comm=task['reward']*rates[i]
         users_col.update_one({"user_id": ref_id}, {"$inc": {"balance": comm}})
-        try: bot.send_message(ref_id, f"💰 Level {i+1} কমিশন +{comm:.2f}৳\nUser: {c.from_user.first_name} টাস্ক করেছে")
+        try: bot.send_message(ref_id, f"💰 Level {i+1} কমিশন +{comm:.2f}৳")
         except: pass
-    bot.send_message(c.message.chat.id, f"✅ +{task['reward']}৳ Added!")
+    bot.send_message(c.message.chat.id, f"✅ {task['reward']}৳ Added!")
 
 @bot.message_handler(func=lambda m: m.text=="💸 উইথড্র")
 def wd(m):
