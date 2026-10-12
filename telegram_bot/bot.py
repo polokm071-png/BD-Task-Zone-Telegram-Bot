@@ -164,7 +164,8 @@ def ask_reward(m):
 @bot.message_handler(func=lambda m: user_data.get(m.from_user.id, {}).get('step')=='reward')
 def save_final(m):
     try:
-        reward=int(m.text)
+
+        reward=float(m.text)
         d=user_data[m.from_user.id]
         new_id=get_next_id("tasks")
         tasks_col.insert_one({"id": new_id, "platform": d['platform'], "action": d['action'], "title": d['title'], "link": d['link'], "reward": reward})
