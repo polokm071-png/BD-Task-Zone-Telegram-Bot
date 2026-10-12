@@ -186,15 +186,15 @@ def ref(m):
 
 @bot.message_handler(func=lambda m: m.text=="📝 টাস্ক")
 def kaj(m):
+    def kaj(m):
     tasks=list(tasks_col.find({}))
-    if not tasks: bot.send_message(m.chat.id, "❌ টাস্ক নেই"); return
+    if not tasks: bot.send_message(m.chat.id, "❌ কোন কাজ নেই"); return
     for t in tasks:
-        if completed_col.find_one({"user_id": m.from_user.id, "task_id": t['id']}): continue
+        if completed_col.find_one({"user_id": m.from_user.id, "task_id": t["id"]}): continue
         mk=telebot.types.InlineKeyboardMarkup()
-        mk.add(telebot.types.InlineKeyboardButton("🔗 Go", url=t['link']))
-        mk.add(telebot.types.InlineKeyboardButton("✅ Done", callback_data=f"done_{t['id']}"))
-        bot.send_message(m.chat.id, f"📌 {t['title']}\n💰 {t['reward']}৳", reply_markup=mk)
-
+        mk.add(telebot.types.InlineKeyboardButton("🚀 Go", callback_data=f"go:{t['id']}"))
+        mk.add(telebot.types.InlineKeyboardButton("✅ Done", callback_data=f"done:{t['id']}"))
+        bot.send_message(m.chat.id, f"📝 {t['title']}\n💰 {t['reward']}৳", reply_markup=mk)
 @bot.callback_query_handler(func=lambda c: c.data.startswith("done_"))
 def done_task(c):
     tid=int(c.data.split("_")[1])
