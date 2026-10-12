@@ -6,7 +6,7 @@ import os
 TOKEN = os.getenv("BOT_TOKEN")
 MONGO = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-CHANNELS = ["@YOUR_CHANNEL_1", "@YOUR_CHANNEL_2"]
+CHANNELS = ["@COINZOBD", "@onlinejob10p"]
 
 bot = telebot.TeleBot(TOKEN)
 client = MongoClient(MONGO)
@@ -44,7 +44,6 @@ def get_upline_chain(user_id, depth=3):
 def is_joined(user_id):
     try:
         for ch in CHANNELS:
-            if "YOUR_CHANNEL" in ch: continue
             st = bot.get_chat_member(ch, user_id).status
             if st in ['left','kicked']: return False
         return True
@@ -63,8 +62,8 @@ def start(m):
     else:
         if not is_joined(m.from_user.id):
             mk=telebot.types.InlineKeyboardMarkup()
-            mk.add(telebot.types.InlineKeyboardButton("Channel 1", url=f"https://t.me/{CHANNELS[0].replace('@','')}"))
-            mk.add(telebot.types.InlineKeyboardButton("Channel 2", url=f"https://t.me/{CHANNELS[1].replace('@','')}"))
+            mk.add(telebot.types.InlineKeyboardButton("COINZOBD Join", url="https://t.me/COINZOBD"))
+            mk.add(telebot.types.InlineKeyboardButton("Online Job Join", url="https://t.me/onlinejob10p"))
             mk.add(telebot.types.InlineKeyboardButton("Joined Done", callback_data="check_join"))
             bot.send_message(m.chat.id, "2 ta channel join koro", reply_markup=mk)
             return
@@ -107,10 +106,7 @@ def save_final(m):
 @bot.message_handler(func=lambda m: m.text=="STAT")
 def stat(m):
     if m.from_user.id!=ADMIN_ID: return
-    total_users=users_col.count_documents({})
-    total_tasks=tasks_col.count_documents({})
-    total_pending=withdraw_col.count_documents({"status":"pending"})
-    bot.send_message(m.chat.id, f"Total Users: {total_users}\nTotal Tasks: {total_tasks}\nPending Withdraw: {total_pending}")
+    bot.send_message(m.chat.id, f"Users: {users_col.count_documents({})}\nTasks: {tasks_col.count_documents({})}\nPending: {withdraw_col.count_documents({'status':'pending'})}")
 
 @bot.message_handler(func=lambda m: m.text=="BALANCE")
 def bal(m):
@@ -140,8 +136,7 @@ def go_task(c):
     tid=int(c.data.split(":")[1])
     go_col.update_one({"user_id": c.from_user.id, "task_id": tid}, {"$set": {"time": datetime.now()}}, upsert=True)
     task=tasks_col.find_one({"id": tid})
-    if task:
-        bot.send_message(c.message.chat.id, f"Link: {task['link']}\n15 second dekhe Done chapo!")
+    if task: bot.send_message(c.message.chat.id, f"Link: {task['link']}\n15 second dekhe Done chapo!")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("done:"))
 def done_task(c):
@@ -149,12 +144,9 @@ def done_task(c):
     if completed_col.find_one({"user_id": c.from_user.id, "task_id": tid}):
         bot.answer_callback_query(c.id, "Already Done"); return
     go=go_col.find_one({"user_id": c.from_user.id, "task_id": tid})
-    if not go:
-        bot.answer_callback_query(c.id, "Age Go chapo!"); return
+    if not go: bot.answer_callback_query(c.id, "Age Go chapo!"); return
     diff=(datetime.now() - go['time']).total_seconds()
-    if diff < 15:
-        bot.answer_callback_query(c.id, f"{int(15-diff)}s wait!")
-        return
+    if diff < 15: bot.answer_callback_query(c.id, f"{int(15-diff)}s wait!"); return
     task=tasks_col.find_one({"id": tid})
     if not task: return
     completed_col.insert_one({"user_id": c.from_user.id, "task_id": tid})
