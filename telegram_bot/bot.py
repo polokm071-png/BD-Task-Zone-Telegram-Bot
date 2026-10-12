@@ -69,14 +69,10 @@ def start(m):
                 ref=int(m.text.split()[1])
                 if ref==m.from_user.id: ref=None
             except: ref=None
-
         users_col.insert_one({"user_id": m.from_user.id, "balance":0, "ref_by": ref, "joined": datetime.now()})
-
-        # --- Instant 2 Taka Bonus ---
         if ref:
             ref_user = users_col.find_one({"user_id": ref})
             if ref_user:
-                # Bonus only once per new user
                 if not completed_col.find_one({"user_id": m.from_user.id, "type": "refer_bonus"}):
                     users_col.update_one({"user_id": ref}, {"$inc": {"balance": 2}})
                     completed_col.insert_one({"user_id": m.from_user.id, "type": "refer_bonus", "time": datetime.now()})
@@ -84,7 +80,6 @@ def start(m):
                         new_bal = users_col.find_one({"user_id": ref})['balance']
                         bot.send_message(ref, f"🎉 Refer Bonus! Ekjon join korse, tumi 2 Taka paicho! 💰\nNew Balance: {round(new_bal,2)} Taka")
                     except: pass
-
     if m.from_user.id==ADMIN_ID:
         bot.send_message(m.chat.id, "Admin Panel Ready ✅", reply_markup=admin_menu())
     else:
@@ -103,6 +98,13 @@ def check_join(c):
         bot.send_message(c.message.chat.id, "Thanks Joined! ✅", reply_markup=get_main_menu())
     else:
         bot.answer_callback_query(c.id, "Join koro nai! Age 2 ta join koro", show_alert=True)
+
+@bot.message_handler(commands=['admin'])
+def admin_cmd(m):
+    if m.from_user.id!= ADMIN_ID:
+        bot.send_message(m.chat.id, f"⛔ You are not admin!\nYour ID: {m.from_user.id}\nADMIN_ID env: {ADMIN_ID}")
+        return
+    bot.send_message(m.chat.id, "Admin Panel Ready ✅", reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: m.text in ["❌ Cancel", "Cancel"])
 def cancel_handler(m):
@@ -207,7 +209,6 @@ def done_task(c):
     if not task: return
     completed_col.insert_one({"user_id": c.from_user.id, "task_id": tid})
     users_col.update_one({"user_id": c.from_user.id}, {"$inc": {"balance": task['reward']}})
-    # Refer Commission 10% / 5% / 2.5%
     rates=[0.10, 0.05, 0.025]
     uplines=get_upline_chain(c.from_user.id, 3)
     for i, ref_id in enumerate(uplines):
