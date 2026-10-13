@@ -14,7 +14,7 @@ db = client["bdtaskzone"]
 users = db["users"]
 tasks = db["tasks"]
 withdraws = db["withdraws"]
-task_done = db["task_done"] # 1 ID = 1 Task er jonno
+task_done = db["task_done"]
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -35,7 +35,8 @@ def get_main_menu():
 
 def admin_menu():
     mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("TASK ADD", "STAT", "WITHDRAW LIST")
+    mk.row("TASK ADD", "🗑️ DELETE TASK")
+    mk.row("STAT", "WITHDRAW LIST")
     mk.row("KAJ", "BALANCE", "REFER")
     mk.row("⬅️ BACK TO USER MENU")
     return mk
@@ -114,12 +115,10 @@ def kaj(m):
     if not t:
         bot.send_message(m.chat.id, "এখন কোনো কাজ নাই, নতুন কাজের জন্য ওয়েট করো 🙏")
         return
-
     task_id = str(t["_id"])
     if task_done.find_one({"user_id": m.from_user.id, "task_id": task_id}):
         bot.send_message(m.chat.id, "এখন কোনো কাজ নাই, নতুন কাজের জন্য ওয়েট করো 🙏\n\n✅ তুমি আজকের কাজটা করে ফেলেছো!")
         return
-
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link", "https://t.me/COINZOBD")))
     mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{str(t['_id'])}"))
@@ -194,6 +193,26 @@ def task_save(m, text, link):
     tasks.insert_one({"text": text, "link": link, "reward": reward, "time": time.time()})
     bot.send_message(m.chat.id, f"✅ Task Added: {reward} Taka", reply_markup=admin_menu())
 
+@bot.message_handler(func=lambda m: m.text == "🗑️ DELETE TASK")
+def delete_task_menu(m):
+    if m.from_user.id!= ADMIN_ID: return
+    all_tasks = list(tasks.find().sort("time", -1).limit(20))
+    if not all_tasks:
+        bot.send_message(m.chat.id, "কোনো Task নাই ✅", reply_markup=admin_menu())
+        return
+    mk = telebot.types.InlineKeyboardMarkup()
+    for t in all_tasks:
+        txt = t.get('text','No Text')[:25]
+        rew = t.get('reward',0)
+        mk.add(telebot.types.InlineKeyboardButton(f"🗑️ {txt} - {rew} Tk", callback_data=f"deltask_{str(t['_id'])}"))
+    mk.add(telebot.types.InlineKeyboardButton("❌ Delete ALL Tasks", callback_data="del_all_tasks"))
+    bot.send_message(m.chat.id, "যে Task টা Delete করতে চাও ওটাতে ক্লিক করো:", reply_markup=mk)
+
+@bot.message_handler(commands=['deltask'])
+def deltask_cmd(m):
+    if m.from_user.id!= ADMIN_ID: return
+    delete_task_menu(m)
+
 @bot.message_handler(func=lambda m: m.text == "⬅️ BACK TO USER MENU")
 def back(m):
     if m.from_user.id == ADMIN_ID:
@@ -235,6 +254,31 @@ def callback(c):
         try: bot.answer_callback_query(c.id, f"+{reward} Taka Added!")
         except: pass
 
-print("Bot Running - FINAL ADJUSTED VERSION")
+    elif c.data.startswith("deltask_"):
+        if c.from_user.id!= ADMIN_ID:
+            bot.answer_callback_query(c.id, "Admin only!", show_alert=True)
+            return
+        try:
+            from bson import ObjectId
+            tid = c.data.split("deltask_")[1]
+            t = tasks.find_one({"_id": ObjectId(tid)})
+            if t:
+                tasks.delete_one({"_id": ObjectId(tid)})
+                task_done.delete_many({"task_id": tid})
+                bot.answer_callback_query(c.id, "✅ Task Deleted!", show_alert=True)
+                bot.edit_message_text(f"✅ Deleted: {t.get('text','')} - {t.get('reward',0)} Taka", c.message.chat.id, c.message.message_id)
+            else:
+                bot.answer_callback_query(c.id, "Task not found", show_alert=True)
+        except Exception as e:
+            bot.answer_callback_query(c.id, f"Error: {e}", show_alert=True)
+
+    elif c.data == "del_all_tasks":
+        if c.from_user.id!= ADMIN_ID: return
+        tasks.delete_many({})
+        task_done.delete_many({})
+        bot.answer_callback_query(c.id, "✅ All Tasks Deleted!", show_alert=True)
+        bot.edit_message_text("✅ সব Task Delete হয়ে গেছে।", c.message.chat.id, c.message.message_id)
+
+print("Bot Running - WITH DELETE TASK")
 keep_alive()
 bot.infinity_polling()
