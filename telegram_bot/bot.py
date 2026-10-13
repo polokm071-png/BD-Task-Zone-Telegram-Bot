@@ -4,6 +4,7 @@ import time
 from pymongo import MongoClient
 from flask import Flask
 from threading import Thread
+from bson import ObjectId
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
@@ -26,6 +27,11 @@ def keep_alive():
     t = Thread(target=run)
     t.daemon = True
     t.start()
+
+# ===== NEW SYSTEM ADDED =====
+pending_tasks = {} # uid: {task_id, start_time}
+NO_TASK_MSG = "😊 আপাতত নতুন কোনো কাজ নেই। নতুন কাজ আসলেই তোমাকে জানিয়ে দেওয়া হবে।"
+TASK_WAIT_TIME = 30 # 30 second
 
 def get_main_menu():
     mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -53,6 +59,35 @@ def is_joined(uid):
             if st in ["left", "kicked"]: return False
         return True
     except: return True
+
+def get_next_task_for_user(uid):
+    # ইউজার করেনি এমন সব টাস্ক বের করো
+    done_ids = [x["task_id"] for x in task_done.find({"user_id": uid})]
+    # done_ids string, tasks _id ObjectId, তাই string compare করবো
+    all_tasks = list(tasks.find().sort("time", 1)) # পুরানো থেকে নতুন
+    for t in all_tasks:
+        if str(t["_id"]) not in done_ids:
+            return t
+    return None
+
+def send_task_to_user(chat_id, uid):
+    t = get_next_task_for_user(uid)
+    if not t:
+        bot.send_message(chat_id, NO_TASK_MSG)
+        return None
+
+    task_id = str(t["_id"])
+    pending_tasks[uid] = {"task_id": task_id, "start": time.time()}
+
+    mk = telebot.types.InlineKeyboardMarkup()
+    mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link", "https://t.me/COINZOBD")))
+    mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{task_id}"))
+
+    total_task = tasks.count_documents({})
+    done_count = task_done.count_documents({"user_id": uid})
+
+    bot.send_message(chat_id, f"📝 TASK {done_count+1}/{total_task}:\n{t.get('text','Task koro')}\n\nReward: {t.get('reward',1)} Taka\n\n⏰ 30 second dekhe Done chapo!\n30 second er age Done chaple taka paba na!", reply_markup=mk)
+    return t
 
 @bot.message_handler(commands=['start'])
 def start(m):
@@ -92,7 +127,7 @@ def start(m):
 @bot.message_handler(commands=['admin'])
 def admin_p(m):
     if m.from_user.id == ADMIN_ID:
-        bot.send_message(m.chat.id, "Admin Panel ON 🔒", reply_markup=admin_menu())
+        bot.send_message(m.chat.id, "Admin Panel ON 🔒\n\nCommands:\n/notify 10 - নতুন কাজের নোটিফিকেশন\n/broadcast তোমার মেসেজ - কাস্টম ব্রডকাস্ট", reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: m.text == "BALANCE")
 def bal(m):
@@ -111,18 +146,7 @@ def refer(m):
 
 @bot.message_handler(func=lambda m: m.text == "KAJ")
 def kaj(m):
-    t = tasks.find_one({}, sort=[("time", -1)])
-    if not t:
-        bot.send_message(m.chat.id, "এখন কোনো কাজ নাই, নতুন কাজের জন্য ওয়েট করো 🙏")
-        return
-    task_id = str(t["_id"])
-    if task_done.find_one({"user_id": m.from_user.id, "task_id": task_id}):
-        bot.send_message(m.chat.id, "এখন কোনো কাজ নাই, নতুন কাজের জন্য ওয়েট করো 🙏\n\n✅ তুমি আজকের কাজটা করে ফেলেছো!")
-        return
-    mk = telebot.types.InlineKeyboardMarkup()
-    mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link", "https://t.me/COINZOBD")))
-    mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{str(t['_id'])}"))
-    bot.send_message(m.chat.id, f"📝 TASK:\n{t.get('text','Task koro')}\n\nReward: {t.get('reward',1)} Taka\n\n⏰ 15 second dekhe Done chapo!", reply_markup=mk)
+    send_task_to_user(m.chat.id, m.from_user.id)
 
 @bot.message_handler(func=lambda m: m.text == "WITHDRAW")
 def withdraw(m):
@@ -165,6 +189,45 @@ def wlist(m):
     for w in pending: msg += f"ID: {w['user_id']} | Get: {w['get']} Taka | @{w.get('username','no')}\n"
     bot.send_message(m.chat.id, msg)
 
+# ===== NEW: NOTIFY SYSTEM =====
+@bot.message_handler(commands=['notify'])
+def notify_cmd(m):
+    if m.from_user.id!= ADMIN_ID: return
+    try:
+        count = m.text.split()[1]
+        notify_text = f"🔔 নতুন {count} টা কাজ যোগ হয়েছে!\n👉 এখনই KAJ বাটনে চাপ দিয়ে কাজ শুরু করো।"
+        all_users = list(users.find({}, {"_id": 1}))
+        sent = 0
+        for u in all_users:
+            try:
+                bot.send_message(u["_id"], notify_text)
+                sent += 1
+                time.sleep(0.05)
+            except: pass
+        bot.send_message(m.chat.id, f"✅ {sent} জনকে নোটিফিকেশন পাঠানো হইছে: {count} টা কাজ", reply_markup=admin_menu())
+    except:
+        bot.send_message(m.chat.id, "ব্যবহার: /notify 10\nযেমন: /notify 50 লিখলে 50 টা কাজের নোটিফিকেশন যাবে", reply_markup=admin_menu())
+
+@bot.message_handler(commands=['broadcast'])
+def broadcast_cmd(m):
+    if m.from_user.id!= ADMIN_ID: return
+    try:
+        msg_text = m.text.replace('/broadcast ', '').replace('/broadcast', '')
+        if not msg_text.strip():
+            bot.send_message(m.chat.id, "ব্যবহার: /broadcast তোমার মেসেজ\nযেমন: /broadcast আজ রাত 9 টায় 100 টা কাজ আসবে", reply_markup=admin_menu())
+            return
+        all_users = list(users.find({}, {"_id": 1}))
+        sent = 0
+        for u in all_users:
+            try:
+                bot.send_message(u["_id"], msg_text)
+                sent += 1
+                time.sleep(0.05)
+            except: pass
+        bot.send_message(m.chat.id, f"✅ {sent} জনকে ব্রডকাস্ট পাঠানো হইছে", reply_markup=admin_menu())
+    except Exception as e:
+        bot.send_message(m.chat.id, f"Error: {e}")
+
 @bot.message_handler(func=lambda m: m.text == "TASK ADD")
 def task_add_start(m):
     if m.from_user.id!= ADMIN_ID: return
@@ -191,7 +254,7 @@ def task_save(m, text, link):
     try: reward = float(m.text)
     except: reward = 1.0
     tasks.insert_one({"text": text, "link": link, "reward": reward, "time": time.time()})
-    bot.send_message(m.chat.id, f"✅ Task Added: {reward} Taka", reply_markup=admin_menu())
+    bot.send_message(m.chat.id, f"✅ Task Added: {reward} Taka\nএখন /notify {tasks.count_documents({})} দিয়ে ইউজারদের জানাও", reply_markup=admin_menu())
 
 @bot.message_handler(func=lambda m: m.text == "🗑️ DELETE TASK")
 def delete_task_menu(m):
@@ -228,38 +291,70 @@ def callback(c):
 
     elif c.data.startswith("done_"):
         uid = c.from_user.id
-        t = tasks.find_one({}, sort=[("time", -1)])
-        if not t: return
-        task_id = str(t["_id"])
-        if task_done.find_one({"user_id": uid, "task_id": task_id}):
-            bot.answer_callback_query(c.id, "❌ তুমি এই কাজটা আগেই করেছো!", show_alert=True)
-            return
-        reward = t.get("reward", 1)
-        users.update_one({"_id": uid}, {"$inc": {"balance": reward}})
-        task_done.insert_one({"user_id": uid, "task_id": task_id, "time": time.time()})
-        u = users.find_one({"_id": uid})
-        if u and u.get("referred_by"):
-            l1 = u.get("referred_by")
-            users.update_one({"_id": l1}, {"$inc": {"balance": round(reward*0.10, 2)}})
-            u1 = users.find_one({"_id": l1})
-            if u1 and u1.get("referred_by"):
-                l2 = u1.get("referred_by")
-                users.update_one({"_id": l2}, {"$inc": {"balance": round(reward*0.05, 2)}})
-                u2 = users.find_one({"_id": l2})
-                if u2 and u2.get("referred_by"):
-                    l3 = u2.get("referred_by")
-                    users.update_one({"_id": l3}, {"$inc": {"balance": round(reward*0.025, 2)}})
-        nb = round(users.find_one({"_id": uid}).get("balance", 0), 2)
-        bot.send_message(c.message.chat.id, f"✅ Task Done! +{reward} Taka\nNew Balance: {nb} Taka")
-        try: bot.answer_callback_query(c.id, f"+{reward} Taka Added!")
-        except: pass
+        try:
+            tid = c.data.split("done_")[1]
+            t = tasks.find_one({"_id": ObjectId(tid)})
+            if not t:
+                bot.answer_callback_query(c.id, "Task not found", show_alert=True)
+                return
+
+            if task_done.find_one({"user_id": uid, "task_id": tid}):
+                bot.answer_callback_query(c.id, "❌ তুমি এই কাজটা আগেই করেছো!", show_alert=True)
+                return
+
+            # 30 second check
+            p = pending_tasks.get(uid)
+            if p and p["task_id"] == tid:
+                elapsed = time.time() - p["start"]
+                if elapsed < TASK_WAIT_TIME:
+                    remain = int(TASK_WAIT_TIME - elapsed)
+                    bot.answer_callback_query(c.id, f"⏳ আরো {remain} সেকেন্ড বাকি! 30 সেকেন্ড পর DONE চাপো", show_alert=True)
+                    return
+            else:
+                # যদি pending না থাকে, মানে KAJ না চেপে DONE চাপছে, তাও 30s বাধ্যতামূলক করার জন্য block করবো না, সরাসরি reward দিবো
+                pass
+
+            reward = t.get("reward", 1)
+            users.update_one({"_id": uid}, {"$inc": {"balance": reward}})
+            task_done.insert_one({"user_id": uid, "task_id": tid, "time": time.time()})
+            if uid in pending_tasks: del pending_tasks[uid]
+
+            # Referral bonus
+            u = users.find_one({"_id": uid})
+            if u and u.get("referred_by"):
+                l1 = u.get("referred_by")
+                users.update_one({"_id": l1}, {"$inc": {"balance": round(reward*0.10, 2)}})
+                u1 = users.find_one({"_id": l1})
+                if u1 and u1.get("referred_by"):
+                    l2 = u1.get("referred_by")
+                    users.update_one({"_id": l2}, {"$inc": {"balance": round(reward*0.05, 2)}})
+                    u2 = users.find_one({"_id": l2})
+                    if u2 and u2.get("referred_by"):
+                        l3 = u2.get("referred_by")
+                        users.update_one({"_id": l3}, {"$inc": {"balance": round(reward*0.025, 2)}})
+
+            nb = round(users.find_one({"_id": uid}).get("balance", 0), 2)
+            bot.send_message(c.message.chat.id, f"✅ Task Done! +{reward} Taka\nNew Balance: {nb} Taka")
+            try: bot.answer_callback_query(c.id, f"+{reward} Taka Added!")
+            except: pass
+
+            # ===== AUTO NEXT SYSTEM =====
+            time.sleep(1)
+            next_t = get_next_task_for_user(uid)
+            if next_t:
+                send_task_to_user(c.message.chat.id, uid)
+            else:
+                bot.send_message(c.message.chat.id, NO_TASK_MSG + "\n\n🔔 নতুন কাজ আসলেই নোটিফিকেশন পাবে।")
+
+        except Exception as e:
+            print(f"done error: {e}")
+            bot.answer_callback_query(c.id, "Error!", show_alert=True)
 
     elif c.data.startswith("deltask_"):
         if c.from_user.id!= ADMIN_ID:
             bot.answer_callback_query(c.id, "Admin only!", show_alert=True)
             return
         try:
-            from bson import ObjectId
             tid = c.data.split("deltask_")[1]
             t = tasks.find_one({"_id": ObjectId(tid)})
             if t:
@@ -279,6 +374,6 @@ def callback(c):
         bot.answer_callback_query(c.id, "✅ All Tasks Deleted!", show_alert=True)
         bot.edit_message_text("✅ সব Task Delete হয়ে গেছে।", c.message.chat.id, c.message.message_id)
 
-print("Bot Running - WITH DELETE TASK")
+print("Bot Running - FINAL WITH AUTO NEXT + NOTIFY")
 keep_alive()
 bot.infinity_polling()
