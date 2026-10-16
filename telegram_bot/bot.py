@@ -1,18 +1,19 @@
 import os
 import telebot
 import time
+import hashlib
 from pymongo import MongoClient
-from flask import Flask, request
+from flask import Flask, request, render_template_string
 from threading import Thread
 from bson import ObjectId
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+SECRET_KEY = os.getenv("TIMEWALL_SECRET", "") # চাইলে Render এ Add করবা, না করলেও চলবে
 
-# Timewall - তোমার ID
 TIMEWALL_ID = "41fc65e877fed779"
-TAKA_PER_CENT = 0.7
+TAKA_PER_COIN = 0.07 # 1000 Coin = $1 = 70 Taka
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -22,29 +23,71 @@ withdraws = db["withdraws"]
 task_done = db["task_done"]
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
 app = Flask('')
+
+# --- নতুন Add করা হয়েছে - Offerwall এর জন্য ---
+OFFERWALL_HTML = """
+<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{margin:0;background:#000}iframe{width:100%;height:100vh;border:0}</style></head>
+<body><script>
+  const p = new URLSearchParams(window.location.search);
+  const uid = p.get('uid') || '0';
+  document.write(`<iframe src="https://timewall.io/offerwall/41fc65e877fed779?uid=${uid}" allow="fullscreen"></iframe>`);
+</script></body></html>
+"""
+
 @app.route('/')
 def home(): return "Bot Running 24h"
 
+@app.route('/offerwall.html')
+def offerwall_page():
+    return render_template_string(OFFERWALL_HTML)
+
+# --- Postback ঠিক করা হয়েছে ---
 @app.route('/postback')
 def timewall_postback():
-    uid = request.args.get('uid')
-    amount_cent = request.args.get('amount_cent', '0')
-    if not uid: return "no uid", 400
+    user_id = request.args.get('userid') or request.args.get('userId') or request.args.get('uid')
+    revenue = request.args.get('revenue', '0')
+    currency_amount = request.args.get('currency', '0')
+    hash_val = request.args.get('hash', '')
+    txid = request.args.get('txid', '')
+
+    if not user_id:
+        return "no uid", 400
+
+    # Hash verify optional
+    if SECRET_KEY and hash_val:
+        calc = hashlib.sha256(f"{user_id}{revenue}{SECRET_KEY}".encode()).hexdigest()
+        if calc!= hash_val:
+            print(f"Hash mismatch {calc} vs {hash_val}")
+
     try:
-        uid_int = int(uid)
-        cent = int(float(amount_cent))
-        taka = round(cent * TAKA_PER_CENT, 2)
-        if taka <= 0: return "0", 200
+        uid_int = int(float(user_id))
+        try:
+            coin = float(currency_amount)
+        except:
+            coin = float(revenue) * 1000
+
+        taka = round(coin * TAKA_PER_COIN, 2)
+        if taka <= 0:
+            return "0", 200
+
+        # Duplicate check - একই কাজের টাকা ২ বার ঢুকবে না
+        if txid and task_done.find_one({"txid": txid}):
+            return "duplicate", 200
+
         users.update_one({"_id": uid_int}, {"$inc": {"balance": taka}})
+        if txid:
+            task_done.insert_one({"user_id": uid_int, "txid": txid, "time": time.time(), "taka": taka})
+
         try:
             bot.send_message(uid_int, f"🎉 Coin Earn থেকে +{taka} Taka পেয়েছো! ✅\nBALANCE চেক করো।")
         except: pass
-        print(f"Timewall: {uid} +{taka}")
+        print(f"Timewall: {uid_int} +{taka} Taka ({coin} Coin) tx={txid}")
         return "OK", 200
     except Exception as e:
-        print(e)
+        print(f"postback error {e}")
         return "error", 400
 
 def run(): app.run(host='0.0.0.0', port=8080)
@@ -108,7 +151,8 @@ def send_task_to_user(chat_id, uid):
     return t
 
 def send_offerwall_task(chat_id, uid):
-    url = f"https://timewall.io/offerwall/{TIMEWALL_ID}?uid={uid}"
+    # --- এই লাইনটা শুধু চেঞ্জ করা হয়েছে ---
+    url = f"https://bd-task-zone-telegram-bot.onrender.com/offerwall.html?uid={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("🚀 Open Coin Earn Wall", url=url))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back", callback_data="kaj_back"))
