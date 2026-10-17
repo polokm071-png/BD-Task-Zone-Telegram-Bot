@@ -31,7 +31,7 @@ OFFERWALL_HTML = """
 </head><body><script>
   const p = new URLSearchParams(window.location.search);
   const uid = p.get('uid') || '0';
-  window.location.href = `https://wall.timewall.io/41fc65e877fed779?uid=${uid}`;
+  window.location.href = `https://timewall.io/users/login?oid=41fc65e877fed779&uid=${uid}`;
 </script></body></html>
 """
 
@@ -45,11 +45,11 @@ def offerwall_page():
 
 @app.route('/postback')
 def timewall_postback():
-    user_id = request.args.get('userid') or request.args.get('uid')
+    user_id = request.args.get('userid') or request.args.get('uid') or request.args.get('userId')
     revenue = request.args.get('revenue', '0')
     currency_amount = request.args.get('currency', '0')
     amount_cent = request.args.get('amount') or '0'
-    txid = request.args.get('txid') or ''
+    txid = request.args.get('txid') or request.args.get('transaction_id') or ''
     if not user_id:
         return "no uid", 400
     try:
@@ -138,7 +138,7 @@ def send_task_to_user(chat_id, uid):
     return t
 
 def send_offerwall_task(chat_id, uid):
-    url = f"https://wall.timewall.io/41fc65e877fed779?uid={uid}"
+    url = f"https://timewall.io/users/login?oid={TIMEWALL_ID}&uid={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("🚀 Open Coin Earn Wall", url=url))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back", callback_data="kaj_back"))
@@ -436,6 +436,6 @@ def callback(c):
     elif c.data=="del_cancel":
         bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL")
+print("Bot Running FINAL FIXED")
 keep_alive()
 bot.infinity_polling()
