@@ -43,6 +43,32 @@ def home():
 def offerwall_page():
     return render_template_string(OFFERWALL_HTML)
 
+def add_refer_commission(user_id, earned_taka):
+    try:
+        u = users.find_one({"_id": user_id})
+        if not u or not u.get("referred_by"):
+            return
+        l1_id = u.get("referred_by")
+        l1_user = users.find_one({"_id": l1_id})
+        if l1_user:
+            c1 = round(earned_taka * 0.10, 2)
+            if c1 > 0:
+                users.update_one({"_id": l1_id}, {"$inc": {"balance": c1, "refer_earnings": c1}})
+            l2_id = l1_user.get("referred_by")
+            if l2_id:
+                l2_user = users.find_one({"_id": l2_id})
+                if l2_user:
+                    c2 = round(earned_taka * 0.05, 2)
+                    if c2 > 0:
+                        users.update_one({"_id": l2_id}, {"$inc": {"balance": c2, "refer_earnings": c2}})
+                    l3_id = l2_user.get("referred_by")
+                    if l3_id:
+                        c3 = round(earned_taka * 0.025, 2)
+                        if c3 > 0:
+                            users.update_one({"_id": l3_id}, {"$inc": {"balance": c3, "refer_earnings": c3}})
+    except Exception as e:
+        print(f"Refer Commission Error: {e}")
+
 @app.route('/postback')
 def timewall_postback():
     user_id = request.args.get('userid') or request.args.get('uid') or request.args.get('userId')
@@ -66,6 +92,7 @@ def timewall_postback():
         users.update_one({"_id": uid_int}, {"$inc": {"balance": taka}})
         if txid:
             task_done.insert_one({"user_id": uid_int, "txid": txid, "time": time.time(), "taka": taka})
+        add_refer_commission(uid_int, taka)
         try:
             bot.send_message(uid_int, f"🎉 Coin Earn থেকে +{taka} Taka পেয়েছো! ✅")
         except:
@@ -156,10 +183,16 @@ def start(m):
                 ref_id=int(args[1])
                 if ref_id!=uid and users.find_one({"_id": ref_id}):
                     ref=ref_id
-                    users.update_one({"_id": ref_id}, {"$inc": {"balance": 2, "refer_count": 1}})
+                    users.update_one({"_id": ref_id}, {"$inc": {"balance": 2, "refer_count": 1, "refer_earnings": 2}})
+                    try:
+                        new_user_name = m.from_user.first_name or "New User"
+                        cnt = users.find_one({"_id": ref_id}).get("refer_count", 0)
+                        bot.send_message(ref_id, f"🎉 অভিনন্দন!\n\n👤 {new_user_name} আপনার লিংক থেকে জয়েন করেছে!\n💰 +2 Taka বোনাস পেয়েছেন!\n\n👥 Total Refer: {cnt} জন")
+                    except:
+                        pass
             except:
                 pass
-        users.insert_one({"_id": uid, "balance": 0.0, "refer_count": 0, "referred_by": ref})
+        users.insert_one({"_id": uid, "balance": 0.0, "refer_count": 0, "refer_earnings": 0.0, "referred_by": ref})
     if not is_joined(uid):
         mk=telebot.types.InlineKeyboardMarkup()
         mk.add(telebot.types.InlineKeyboardButton("JOIN COINZOBD", url="https://t.me/COINZOBD"))
@@ -182,8 +215,13 @@ def bal(m):
 
 @bot.message_handler(func=lambda m: m.text=="REFER")
 def refer(m):
-    link=f"https://t.me/{bot.get_me().username}?start={m.from_user.id}"
-    bot.send_message(m.chat.id, f"🔗 Refer Link:\n{link}")
+    uid = m.from_user.id
+    u = users.find_one({"_id": uid})
+    count = u.get("refer_count", 0) if u else 0
+    earn = round(u.get("refer_earnings", 0), 2) if u else 0.0
+    link=f"https://t.me/{bot.get_me().username}?start={uid}"
+    txt = f"🔗 Refer Link:\n{link}\n\n👥 Total Refer: {count} জন\n💰 Refer Earnings: {earn} Taka\n\n💸 Commission Structure:\nLevel 1 = 10%\nLevel 2 = 5%\nLevel 3 = 2.5%\n\n👉 প্রতি রেফার 2 Taka Instant + তার আর্নের 10% Lifetime!"
+    bot.send_message(m.chat.id, txt)
 
 @bot.message_handler(func=lambda m: m.text=="KAJ")
 def kaj(m):
@@ -412,6 +450,7 @@ def callback(c):
         task_done.insert_one({"user_id": uid, "task_id": tid, "time": time.time()})
         if uid in pending_tasks:
             del pending_tasks[uid]
+        add_refer_commission(uid, reward)
         bot.send_message(c.message.chat.id, f"✅ +{reward} Taka")
         next_t=get_next_task_for_user(uid)
         if next_t:
@@ -436,6 +475,6 @@ def callback(c):
     elif c.data=="del_cancel":
         bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL FIXED")
+print("Bot Running FINAL FIXED WITH REFER")
 keep_alive()
 bot.infinity_polling()
