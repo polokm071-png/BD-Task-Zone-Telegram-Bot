@@ -10,10 +10,10 @@ from bson import ObjectId
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-SECRET_KEY = os.getenv("TIMEWALL_SECRET", "") # চাইলে Render এ Add করবা, না করলেও চলবে
+SECRET_KEY = os.getenv("TIMEWALL_SECRET", "")
 
 TIMEWALL_ID = "41fc65e877fed779"
-TAKA_PER_COIN = 0.07 # 1000 Coin = $1 = 70 Taka
+TAKA_PER_COIN = 0.07
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -25,7 +25,7 @@ task_done = db["task_done"]
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask('')
 
-# --- নতুন Add করা হয়েছে - Offerwall এর জন্য ---
+# --- FIXED - আগেরটাই আছে শুধু wall.timewall.io করা হয়েছে ---
 OFFERWALL_HTML = """
 <!DOCTYPE html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -33,7 +33,7 @@ OFFERWALL_HTML = """
 <body><script>
   const p = new URLSearchParams(window.location.search);
   const uid = p.get('uid') || '0';
-  document.write(`<iframe src="https://timewall.io/offerwall/41fc65e877fed779?uid=${uid}" allow="fullscreen"></iframe>`);
+  document.write(`<iframe src="https://wall.timewall.io/41fc65e877fed779?uid=${uid}" allow="fullscreen"></iframe>`);
 </script></body></html>
 """
 
@@ -44,28 +44,30 @@ def home(): return "Bot Running 24h"
 def offerwall_page():
     return render_template_string(OFFERWALL_HTML)
 
-# --- Postback ঠিক করা হয়েছে ---
 @app.route('/postback')
 def timewall_postback():
     user_id = request.args.get('userid') or request.args.get('userId') or request.args.get('uid')
     revenue = request.args.get('revenue', '0')
     currency_amount = request.args.get('currency', '0')
+    amount_cent = request.args.get('amount') or request.args.get('amountCent') or '0'
     hash_val = request.args.get('hash', '')
-    txid = request.args.get('txid', '')
+    txid = request.args.get('txid') or request.args.get('transactionId') or ''
 
     if not user_id:
         return "no uid", 400
 
-    # Hash verify optional
     if SECRET_KEY and hash_val:
         calc = hashlib.sha256(f"{user_id}{revenue}{SECRET_KEY}".encode()).hexdigest()
-        if calc!= hash_val:
+        if calc != hash_val:
             print(f"Hash mismatch {calc} vs {hash_val}")
 
     try:
         uid_int = int(float(user_id))
         try:
-            coin = float(currency_amount)
+            if float(amount_cent) > 0:
+                coin = (float(amount_cent) / 100.0) * 1000
+            else:
+                coin = float(currency_amount) if float(currency_amount) > 0 else float(revenue) * 1000
         except:
             coin = float(revenue) * 1000
 
@@ -73,7 +75,6 @@ def timewall_postback():
         if taka <= 0:
             return "0", 200
 
-        # Duplicate check - একই কাজের টাকা ২ বার ঢুকবে না
         if txid and task_done.find_one({"txid": txid}):
             return "duplicate", 200
 
@@ -128,7 +129,7 @@ def is_joined(uid):
     except: return True
 
 def get_next_task_for_user(uid):
-    done_ids = [x["task_id"] for x in task_done.find({"user_id": uid})]
+    done_ids = [x["task_id"] for x in task_done.find({"user_id": uid, "task_id": {"$exists": True}})]
     all_tasks = list(tasks.find().sort("time", 1))
     for t in all_tasks:
         if str(t["_id"]) not in done_ids:
@@ -146,12 +147,11 @@ def send_task_to_user(chat_id, uid):
     mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link", "https://t.me/COINZOBD")))
     mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{task_id}"))
     total_task = tasks.count_documents({})
-    done_count = task_done.count_documents({"user_id": uid})
+    done_count = task_done.count_documents({"user_id": uid, "task_id": {"$exists": True}})
     bot.send_message(chat_id, f"📝 TASK {done_count+1}/{total_task}:\n{t.get('text','Task koro')}\n\nReward: {t.get('reward',1)} Taka\n\n⏰ 30 second dekhe Done chapo!", reply_markup=mk)
     return t
 
 def send_offerwall_task(chat_id, uid):
-    # --- এই লাইনটা শুধু চেঞ্জ করা হয়েছে ---
     url = f"https://bd-task-zone-telegram-bot.onrender.com/offerwall.html?uid={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("🚀 Open Coin Earn Wall", url=url))
