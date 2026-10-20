@@ -71,9 +71,55 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 </html>
 """
 
+LINK_VERIFY_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link Preparing...</title>
+<style>
+body{background:#0f1115;color:#fff;font-family:sans-serif;text-align:center;padding:15px;margin:0}
+.box{background:#1c1f26;padding:20px;border-radius:16px;margin-top:20px;border:1px solid #2a2d36}
+#timer{font-size:50px;color:#00ff88;font-weight:bold;margin:10px 0}
+#goBtn{display:none;background:#00ff88;color:#000;padding:16px 10px;border:none;border-radius:12px;font-size:18px;font-weight:bold;margin-top:18px;width:100%;cursor:pointer}
+.warn{background:#2a1a00;border:1px solid #ffaa00;padding:12px;border-radius:10px;font-size:13px;text-align:left;margin-top:16px;line-height:1.5}
+.warn b{color:#ffaa00}
+.step{font-size:14px;color:#aaa;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="box">
+<h3 style="margin:0">🚀 আপনার লিংক প্রস্তুত হচ্ছে</h3>
+<div id="timer">15</div>
+<p class="step">অনুগ্রহ করে 15 সেকেন্ড অপেক্ষা করুন</p>
+<button id="goBtn" onclick="goNow()">Continue to Get Link -></button>
+<div class="warn">
+<b>⚠️ পরের পেজে করণীয়:</b><br>
+1. <b>"Continue with ads"</b> এ ক্লিক করবেন (Pay ₹5 এ না)<br>
+2. সবুজ <b>DOWNLOAD APK</b> আসলে ওটা বিজ্ঞাপন! উপরের ছোট <b>X</b> চেপে কেটে দিবেন<br>
+3. একই এড বার বার আসলে <b>Back</b> চেপে আবার Continue চাপুন<br>
+4. শেষে <b>Get Link</b> পেলে ক্লিক করলেই কাজ শেষ
+</div>
+</div>
+<script>
+let t=15;
+let el=document.getElementById('timer');
+let btn=document.getElementById('goBtn');
+let target="{{LINK}}";
+let iid=setInterval(()=>{
+  t--; el.innerText=t;
+  if(t<=0){clearInterval(iid); el.innerText="Ready! ✅"; btn.style.display="block";}
+},1000);
+function goNow(){ window.location.href=target; }
+</script>
+</body>
+</html>
+"""
+
 @app.route('/')
 def home():
-    return "Bot Running 24h - 5 Tasks Live - int-55119 OK"
+    return "Bot Running 24h - 5 Tasks Live - int-55119 OK - LINK FIXED"
 
 @app.route('/offerwall.html')
 def offerwall_page():
@@ -82,6 +128,18 @@ def offerwall_page():
 @app.route('/adsgram.html')
 def adsgram_page():
     return render_template_string(ADSGRAM_HTML)
+
+@app.route('/go/<link_id>')
+def go_link(link_id):
+    try:
+        t = link_tasks.find_one({"_id": ObjectId(link_id)})
+        if not t:
+            return "Link not found or expired", 404
+        real_link = t.get("link")
+        html = LINK_VERIFY_HTML.replace("{{LINK}}", real_link)
+        return render_template_string(html)
+    except Exception as e:
+        return f"Invalid Link: {e}", 400
 
 def add_refer_commission(user_id, earned_taka):
     try:
@@ -228,11 +286,12 @@ def send_link_visit_task(chat_id, uid):
         return
     link_id = str(t["_id"])
     pending_link[uid] = {"id": link_id, "start": time.time()}
+    my_bridge_url = f"https://bd-task-zone-telegram-bot.onrender.com/go/{link_id}"
     mk = telebot.types.InlineKeyboardMarkup()
-    mk.add(telebot.types.InlineKeyboardButton("🔗 Visit Link (10s)", url=t.get("link")))
+    mk.add(telebot.types.InlineKeyboardButton("🔗 Visit Link (15s)", url=my_bridge_url))
     mk.add(telebot.types.InlineKeyboardButton(f"✅ Claim {t.get('reward')} Taka", callback_data=f"claim_link_{link_id}"))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back to KAJ", callback_data="kaj_back"))
-    bot.send_message(chat_id, f"🚀 লিংক ভিজিট বোনাস\n{t.get('text')}\n🔗 লিংকে 10 সেকেন্ড থাকো\n💰 Reward: {t.get('reward')} Taka", reply_markup=mk)
+    bot.send_message(chat_id, f"🚀 লিংক ভিজিট বোনাস\n{t.get('text')}\n🔗 15 সেকেন্ড থাকো তারপর Continue\n💰 Reward: {t.get('reward')} Taka\n\n⚠️ APK DOWNLOAD আসলে X চেপে কাটবে", reply_markup=mk)
 
 def send_captcha_task(chat_id, uid):
     text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
@@ -365,7 +424,6 @@ def do_notify(m):
         except: pass
     bot.send_message(m.chat.id, "✅ Notified", reply_markup=admin_menu())
 
-# --- NEW TASK ADD SYSTEM ---
 @bot.message_handler(func=lambda m: m.text=="TASK ADD")
 def task_add_start(m):
     if m.from_user.id!=ADMIN_ID: return
@@ -475,8 +533,8 @@ def callback(c):
         if not link_data or link_data["id"] != link_id_str: 
             bot.answer_callback_query(c.id, "Expire! আবার KAJ থেকে ঢুকো", show_alert=True)
             return
-        if time.time() - link_data["start"] < 10: 
-            bot.answer_callback_query(c.id, f"⏳ {int(10-(time.time()-link_data['start']))}s অপেক্ষা করো", show_alert=True)
+        if time.time() - link_data["start"] < 15: 
+            bot.answer_callback_query(c.id, f"⏳ {int(15-(time.time()-link_data['start']))}s অপেক্ষা করো", show_alert=True)
             return
         if task_done.find_one({"user_id": uid, "link_task_id": link_id_str}):
             bot.answer_callback_query(c.id, "আগেই করেছো!", show_alert=True)
@@ -552,6 +610,6 @@ def callback(c):
         bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
     elif c.data=="del_cancel": bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL - 5 Tasks - int-55119 - Reward 0.10 Taka - Link Task System Added")
+print("Bot Running FINAL - 5 Tasks - LINK FIXED - 15s Bridge Added")
 keep_alive()
 bot.infinity_polling()
