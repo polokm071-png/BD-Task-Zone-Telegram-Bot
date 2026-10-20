@@ -25,7 +25,7 @@ client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
 users = db["users"]
 tasks = db["tasks"]
-link_tasks = db["link_tasks"] # নতুন টেবিল Link Visit এর জন্য
+link_tasks = db["link_tasks"]
 withdraws = db["withdraws"]
 task_done = db["task_done"]
 
@@ -426,6 +426,7 @@ def delete_task_menu(m):
         mk.add(telebot.types.InlineKeyboardButton(f"🗑️ {txt}", callback_data=f"deltask_{str(t['_id'])}"))
     mk.add(telebot.types.InlineKeyboardButton("❌ Delete ALL", callback_data="del_all_tasks"))
     bot.send_message(m.chat.id, "Delete ক্লিক করো:", reply_markup=mk)
+
 @bot.message_handler(func=lambda m: m.text=="⬅️ BACK TO USER MENU")
 def back(m): bot.send_message(m.chat.id, "User Mode", reply_markup=get_main_menu())
 
@@ -452,7 +453,6 @@ def handle_captcha_answer(m):
 def callback(c):
     uid = c.from_user.id
     
-    # Admin Add Task Callbacks
     if c.data=="add_regular":
         bot.send_message(c.message.chat.id, "Regular Task এর Text dao:", reply_markup=cancel_menu())
         bot.register_next_step_handler(c.message, task_add_link)
