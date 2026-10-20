@@ -19,7 +19,7 @@ TAKA_PER_COIN = 0.07
 ADSGRAM_REWARD = 0.10
 LINK_REWARD = 0.15
 CAPTCHA_REWARD = 0.20
-ADSGRAM_BLOCK_ID = "int-55114" # তোমার Block ID
+ADSGRAM_BLOCK_ID = "int-55119"
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -33,7 +33,6 @@ app = Flask('')
 
 OFFERWALL_HTML = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><script>const p=new URLSearchParams(window.location.search);const uid=p.get('uid')||'0';window.location.href=`https://timewall.io/users/login?oid=41fc65e877fed779&uid=${uid}`;</script></body></html>"""
 
-# --- NEW ADSGRAM HTML ---
 ADSGRAM_HTML = """
 <!DOCTYPE html>
 <html>
@@ -55,11 +54,10 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 <script>
   const urlParams = new URLSearchParams(window.location.search);
   const userId = urlParams.get('user_id') || urlParams.get('uid') || urlParams.get('userId');
-  const AdController = window.Adsgram.init({ blockId: "int-55114" });
+  const AdController = window.Adsgram.init({ blockId: "int-55119" });
   AdController.show().then((result) => {
     document.getElementById('status').innerText = "✅ Rewarded! +0.10 Taka";
-    // Reward কল - Adsgram Server থেকেও আসবে, এটা Backup
-    fetch(`/adsgram_reward?userId=${userId}&blockId=int-55114`)
+    fetch(`/adsgram_reward?userId=${userId}&blockId=int-55119`)
       .then(()=> {
         setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
       });
@@ -74,7 +72,7 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 
 @app.route('/')
 def home():
-    return "Bot Running 24h - 5 Tasks Live - int-55114 OK"
+    return "Bot Running 24h - 5 Tasks Live - int-55119 OK"
 
 @app.route('/offerwall.html')
 def offerwall_page():
@@ -105,7 +103,6 @@ def add_refer_commission(user_id, earned_taka):
                         if c3 > 0: users.update_one({"_id": l3_id}, {"$inc": {"balance": c3, "refer_earnings": c3}})
     except: pass
 
-# --- TIMEWALL POSTBACK ---
 @app.route('/postback')
 def timewall_postback():
     user_id = request.args.get('userid') or request.args.get('uid') or request.args.get('userId')
@@ -129,16 +126,14 @@ def timewall_postback():
         return "OK", 200
     except: return "error", 400
 
-# --- ADSGRAM REWARD - 2 টা URL ই কাজ করবে ---
 @app.route('/reward')
 @app.route('/adsgram_reward')
 def adsgram_reward():
     user_id = request.args.get('userId') or request.args.get('user_id') or request.args.get('uid') or request.args.get('userid')
-    block_id = request.args.get('blockId') or 'int-55114'
+    block_id = request.args.get('blockId') or 'int-55119'
     if not user_id: return "no userId", 400
     try:
         uid_int = int(float(user_id))
-        # Anti-flood: 15 sec
         if task_done.find_one({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-15}}):
             return "too fast", 200
         users.update_one({"_id": uid_int}, {"$inc": {"balance": ADSGRAM_REWARD}})
@@ -212,7 +207,6 @@ def send_offerwall_task(chat_id, uid):
     bot.send_message(chat_id, f"💎 প্রিমিয়াম অ্যাপ টাস্ক - Unlimited\n500+ App আছে\n1 App = 2-50 Taka\n⏰ টাকা অটো যোগ হবে\n👇 ক্লিক করো:", reply_markup=mk)
 
 def send_adsgram_task(chat_id, uid):
-    # FIXED URL - তোমার সাইটের ভিডিও পেজ
     url = f"https://bd-task-zone-telegram-bot.onrender.com/adsgram.html?user_id={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("▶️ ভিডিও দেখুন (15s)", web_app=telebot.types.WebAppInfo(url=url)))
@@ -495,6 +489,6 @@ def callback(c):
         bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
     elif c.data=="del_cancel": bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL - 5 Tasks - int-55114 - Reward 0.10 Taka")
+print("Bot Running FINAL - 5 Tasks - int-55119 - Reward 0.10 Taka")
 keep_alive()
 bot.infinity_polling()
