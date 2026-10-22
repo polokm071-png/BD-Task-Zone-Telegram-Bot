@@ -14,12 +14,13 @@ MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 TIMEWALL_ID = "41fc65e877fed779"
 
-# --- TAKA SETTINGS ---
+# --- TAKA SETTINGS FINAL - 30 LIMIT ---
 TAKA_PER_COIN = 0.07
 ADSGRAM_REWARD = 0.10
+ADSGRAM_DAILY_LIMIT = 30
 LINK_REWARD = 0.15
 CAPTCHA_REWARD = 0.20
-ADSGRAM_BLOCK_ID = "int-55119"
+ADSGRAM_BLOCK_ID = "55463"
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -55,13 +56,18 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 <script>
   const urlParams = new URLSearchParams(window.location.search);
   const userId = urlParams.get('user_id') || urlParams.get('uid') || urlParams.get('userId');
-  const AdController = window.Adsgram.init({ blockId: "int-55119" });
+  const AdController = window.Adsgram.init({ blockId: "55463" });
   AdController.show().then((result) => {
-    document.getElementById('status').innerText = "✅ Rewarded! +0.10 Taka";
-    fetch(`/adsgram_reward?userId=${userId}&blockId=int-55119`)
-      .then(()=> {
-        setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
-      });
+    if(result && result.done){
+      document.getElementById('status').innerText = "✅ Rewarded! +0.10 Taka";
+      fetch(`/adsgram_reward?userId=${userId}&blockId=55463&done=1`)
+        .then(()=> {
+          setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
+        });
+    } else {
+      document.getElementById('status').innerText = "❌ পুরা ভিডিও দেখো নাই, টাকা পাবে না";
+      setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
+    }
   }).catch((result) => {
     document.getElementById('status').innerText = "❌ No ads now, try later";
     setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 2000);
@@ -119,7 +125,7 @@ function goNow(){ window.location.href=target; }
 
 @app.route('/')
 def home():
-    return "Bot Running 24h - 5 Tasks Live - int-55119 OK - LINK FIXED"
+    return "Bot Running 24h - 5 Tasks Live - 55463 OK - 30 Limit - Done Check OK"
 
 @app.route('/offerwall.html')
 def offerwall_page():
@@ -189,16 +195,23 @@ def timewall_postback():
 @app.route('/adsgram_reward')
 def adsgram_reward():
     user_id = request.args.get('userId') or request.args.get('user_id') or request.args.get('uid') or request.args.get('userid')
-    block_id = request.args.get('blockId') or 'int-55119'
+    done_flag = request.args.get('done')
+    block_id = request.args.get('blockId') or '55463'
     if not user_id: return "no userId", 400
+    # কাজ না করলে টাকা পাবে না
+    if done_flag != "1": return "not done", 200
     try:
         uid_int = int(float(user_id))
+        # 30 টা লিমিট চেক
+        count_today = task_done.count_documents({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-86400}})
+        if count_today >= ADSGRAM_DAILY_LIMIT:
+            return "limit", 200
         if task_done.find_one({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-15}}):
             return "too fast", 200
         users.update_one({"_id": uid_int}, {"$inc": {"balance": ADSGRAM_REWARD}})
         task_done.insert_one({"user_id": uid_int, "blockId": block_id, "type": "adsgram", "time": time.time(), "taka": ADSGRAM_REWARD})
         add_refer_commission(uid_int, ADSGRAM_REWARD)
-        try: bot.send_message(uid_int, f"🎉 ভিডিও দেখে +{ADSGRAM_REWARD} Taka পেয়েছো! ✅")
+        try: bot.send_message(uid_int, f"🎉 ভিডিও দেখে +{ADSGRAM_REWARD} Taka পেয়েছো! ✅ ({count_today+1}/{ADSGRAM_DAILY_LIMIT})")
         except: pass
         return "OK", 200
     except Exception as e:
@@ -268,11 +281,16 @@ def send_offerwall_task(chat_id, uid):
     bot.send_message(chat_id, f"💎 প্রিমিয়াম অ্যাপ টাস্ক - Unlimited\n500+ App আছে\n1 App = 2-50 Taka\n⏰ টাকা অটো যোগ হবে\n👇 ক্লিক করো:", reply_markup=mk)
 
 def send_adsgram_task(chat_id, uid):
+    count_today = task_done.count_documents({"user_id": uid, "type": "adsgram", "time": {"$gt": time.time()-86400}})
+    remaining = ADSGRAM_DAILY_LIMIT - count_today
+    if remaining <= 0:
+        bot.send_message(chat_id, f"❌ আজকের {ADSGRAM_DAILY_LIMIT}টা ভিডিও শেষ! ✅\nতুমি আজ {ADSGRAM_DAILY_LIMIT * ADSGRAM_REWARD} Taka ইনকাম করে ফেলেছো।\nআগামীকাল আবার {ADSGRAM_DAILY_LIMIT}টা দেখতে পারবে।")
+        return
     url = f"https://bd-task-zone-telegram-bot.onrender.com/adsgram.html?user_id={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
-    mk.add(telebot.types.InlineKeyboardButton("▶️ ভিডিও দেখুন (15s)", web_app=telebot.types.WebAppInfo(url=url)))
+    mk.add(telebot.types.InlineKeyboardButton(f"▶️ ভিডিও দেখুন (15s) - {remaining} টা বাকি", web_app=telebot.types.WebAppInfo(url=url)))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back to KAJ", callback_data="kaj_back"))
-    bot.send_message(chat_id, f"🎬 ভিডিও দেখে ইনকাম করো (Unlimited)\n✅ 1 ভিডিও = {ADSGRAM_REWARD} Taka\n✅ 15 সেকেন্ড দেখলেই টাকা\n✅ Unlimited\n\n👇 ভিডিও দেখতে নিচে ক্লিক করো:", reply_markup=mk)
+    bot.send_message(chat_id, f"🎬 ভিডিও দেখে ইনকাম করো\n✅ 1 ভিডিও = {ADSGRAM_REWARD} Taka\n✅ আজ বাকি আছে: {remaining}/{ADSGRAM_DAILY_LIMIT} টা\n✅ আজ সর্বোচ্চ: {ADSGRAM_DAILY_LIMIT * ADSGRAM_REWARD} Taka ইনকাম\n\n👇 ভিডিও দেখতে নিচে ক্লিক করো:", reply_markup=mk)
 
 def send_link_visit_task(chat_id, uid):
     done_ids = [x["link_task_id"] for x in task_done.find({"user_id": uid, "link_task_id": {"$exists": True}})]
@@ -355,7 +373,7 @@ def refer(m):
 @bot.message_handler(func=lambda m: m.text=="KAJ")
 def kaj(m):
     mk=telebot.types.InlineKeyboardMarkup()
-    mk.add(telebot.types.InlineKeyboardButton("🎬 ভিডিও দেখে ইনকাম করো (Unlimited)", callback_data="kaj_adsgram"))
+    mk.add(telebot.types.InlineKeyboardButton("🎬 ভিডিও দেখে ইনকাম করো (30/day)", callback_data="kaj_adsgram"))
     mk.add(telebot.types.InlineKeyboardButton("💎 প্রিমিয়াম অ্যাপ টাস্ক", callback_data="kaj_coin"))
     mk.add(telebot.types.InlineKeyboardButton("🚀 লিংক ভিজিট বোনাস", callback_data="kaj_link"))
     mk.add(telebot.types.InlineKeyboardButton("⌨️ টাইপিং বোনাস", callback_data="kaj_captcha"))
@@ -610,6 +628,6 @@ def callback(c):
         bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
     elif c.data=="del_cancel": bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL - 5 Tasks - LINK FIXED - 15s Bridge Added")
+print("Bot Running FINAL - 5 Tasks - 55463 - 30 Limit - Done Check OK")
 keep_alive()
 bot.infinity_polling()
