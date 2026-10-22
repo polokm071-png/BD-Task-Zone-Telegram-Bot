@@ -20,7 +20,7 @@ ADSGRAM_REWARD = 0.10
 ADSGRAM_DAILY_LIMIT = 30
 LINK_REWARD = 0.15
 CAPTCHA_REWARD = 0.20
-ADSGRAM_BLOCK_ID = "55463"
+ADSGRAM_BLOCK_ID = "int-55489"
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -56,11 +56,11 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 <script>
   const urlParams = new URLSearchParams(window.location.search);
   const userId = urlParams.get('user_id') || urlParams.get('uid') || urlParams.get('userId');
-  const AdController = window.Adsgram.init({ blockId: "55463" });
+  const AdController = window.Adsgram.init({ blockId: "int-55489" });
   AdController.show().then((result) => {
     if(result && result.done){
       document.getElementById('status').innerText = "✅ Rewarded! +0.10 Taka";
-      fetch(`/adsgram_reward?userId=${userId}&blockId=55463&done=1`)
+      fetch(`/adsgram_reward?userId=${userId}&blockId=int-55489&done=1`)
         .then(()=> {
           setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
         });
@@ -125,7 +125,7 @@ function goNow(){ window.location.href=target; }
 
 @app.route('/')
 def home():
-    return "Bot Running 24h - 5 Tasks Live - 55463 OK - 30 Limit - Done Check OK"
+    return "Bot Running 24h - 5 Tasks Live - int-55489 OK - 30 Limit - Done Check OK"
 
 @app.route('/offerwall.html')
 def offerwall_page():
@@ -196,13 +196,11 @@ def timewall_postback():
 def adsgram_reward():
     user_id = request.args.get('userId') or request.args.get('user_id') or request.args.get('uid') or request.args.get('userid')
     done_flag = request.args.get('done')
-    block_id = request.args.get('blockId') or '55463'
+    block_id = request.args.get('blockId') or 'int-55489'
     if not user_id: return "no userId", 400
-    # কাজ না করলে টাকা পাবে না
     if done_flag != "1": return "not done", 200
     try:
         uid_int = int(float(user_id))
-        # 30 টা লিমিট চেক
         count_today = task_done.count_documents({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-86400}})
         if count_today >= ADSGRAM_DAILY_LIMIT:
             return "limit", 200
@@ -628,6 +626,6 @@ def callback(c):
         bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
     elif c.data=="del_cancel": bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL - 5 Tasks - 55463 - 30 Limit - Done Check OK")
+print("Bot Running FINAL - 5 Tasks - int-55489 - 30 Limit - Done Check OK")
 keep_alive()
 bot.infinity_polling()
