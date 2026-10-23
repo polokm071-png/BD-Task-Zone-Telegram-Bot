@@ -19,7 +19,7 @@ ADSGRAM_REWARD = 0.10
 ADSGRAM_DAILY_LIMIT = 30
 LINK_REWARD = 0.15
 CAPTCHA_REWARD = 0.20
-ADSGRAM_BLOCK_ID = "55463"
+ADSGRAM_BLOCK_ID = "int-55463"
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -55,11 +55,11 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 <script>
   const urlParams = new URLSearchParams(window.location.search);
   const userId = urlParams.get('user_id') || urlParams.get('uid') || urlParams.get('userId');
-  const AdController = window.Adsgram.init({ blockId: "55463" });
+  const AdController = window.Adsgram.init({ blockId: "int-55463" });
   AdController.show().then((result) => {
     if(result && result.done){
       document.getElementById('status').innerText = "✅ Rewarded! +0.10 Taka";
-      fetch(`/adsgram_reward?userId=${userId}&blockId=55463&done=1`).then(()=>{setTimeout(()=>{try{window.Telegram.WebApp.close()}catch(e){window.close()}},1500);});
+      fetch(`/adsgram_reward?userId=${userId}&blockId=int-55463&done=1`).then(()=>{setTimeout(()=>{try{window.Telegram.WebApp.close()}catch(e){window.close()}},1500);});
     } else {
       document.getElementById('status').innerText = "❌ পুরা ভিডিও দেখো নাই";
       setTimeout(()=>{try{window.Telegram.WebApp.close()}catch(e){window.close()}},1500);
@@ -117,7 +117,7 @@ function goNow(){window.location.href=target;}
 """
 
 @app.route('/')
-def home(): return "Bot Running FINAL - 5 Tasks - 55463 ACTIVE - 0.10 Taka"
+def home(): return "Bot Running FINAL - 5 Tasks - int-55463 ACTIVE - 0.10 Taka"
 @app.route('/offerwall.html')
 def offerwall_page(): return render_template_string(OFFERWALL_HTML)
 @app.route('/adsgram.html')
@@ -179,7 +179,7 @@ def timewall_postback():
 def adsgram_reward():
     user_id = request.args.get('userId') or request.args.get('user_id') or request.args.get('uid') or request.args.get('userid')
     done_flag = request.args.get('done')
-    block_id = request.args.get('blockId') or '55463'
+    block_id = request.args.get('blockId') or 'int-55463'
     if not user_id: return "no userId", 400
     if done_flag != "1": return "not done", 200
     try:
@@ -529,6 +529,6 @@ def callback(c):
         bot.answer_callback_query(c.id, "All Deleted!"); bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
     elif c.data=="del_cancel": bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL - 5 Tasks - 55463 ACTIVE - 0.10 Taka - FULL")
+print("Bot Running FINAL - 5 Tasks - int-55463 ACTIVE - 0.10 Taka - FULL")
 keep_alive()
 bot.infinity_polling()
