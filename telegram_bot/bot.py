@@ -14,13 +14,12 @@ MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 TIMEWALL_ID = "41fc65e877fed779"
 
-# --- TAKA SETTINGS FINAL - 30 LIMIT ---
 TAKA_PER_COIN = 0.07
 ADSGRAM_REWARD = 0.10
 ADSGRAM_DAILY_LIMIT = 30
 LINK_REWARD = 0.15
 CAPTCHA_REWARD = 0.20
-ADSGRAM_BLOCK_ID = "int-55489"
+ADSGRAM_BLOCK_ID = "55463"
 
 client = MongoClient(MONGO_URI)
 db = client["bdtaskzone"]
@@ -56,21 +55,18 @@ body{background:#0f0f0f;color:#fff;display:flex;flex-direction:column;justify-co
 <script>
   const urlParams = new URLSearchParams(window.location.search);
   const userId = urlParams.get('user_id') || urlParams.get('uid') || urlParams.get('userId');
-  const AdController = window.Adsgram.init({ blockId: "int-55489" });
+  const AdController = window.Adsgram.init({ blockId: "55463" });
   AdController.show().then((result) => {
     if(result && result.done){
       document.getElementById('status').innerText = "✅ Rewarded! +0.10 Taka";
-      fetch(`/adsgram_reward?userId=${userId}&blockId=int-55489&done=1`)
-        .then(()=> {
-          setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
-        });
+      fetch(`/adsgram_reward?userId=${userId}&blockId=55463&done=1`).then(()=>{setTimeout(()=>{try{window.Telegram.WebApp.close()}catch(e){window.close()}},1500);});
     } else {
-      document.getElementById('status').innerText = "❌ পুরা ভিডিও দেখো নাই, টাকা পাবে না";
-      setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 1500);
+      document.getElementById('status').innerText = "❌ পুরা ভিডিও দেখো নাই";
+      setTimeout(()=>{try{window.Telegram.WebApp.close()}catch(e){window.close()}},1500);
     }
   }).catch((result) => {
     document.getElementById('status').innerText = "❌ No ads now, try later";
-    setTimeout(()=> { try{window.Telegram.WebApp.close()}catch(e){window.close()} }, 2000);
+    setTimeout(()=>{try{window.Telegram.WebApp.close()}catch(e){window.close()}},2000);
   });
 </script>
 </body>
@@ -102,8 +98,8 @@ body{background:#0f1115;color:#fff;font-family:sans-serif;text-align:center;padd
 <button id="goBtn" onclick="goNow()">Continue to Get Link -></button>
 <div class="warn">
 <b>⚠️ পরের পেজে করণীয়:</b><br>
-1. <b>"Continue with ads"</b> এ ক্লিক করবেন (Pay ₹5 এ না)<br>
-2. সবুজ <b>DOWNLOAD APK</b> আসলে ওটা বিজ্ঞাপন! উপরের ছোট <b>X</b> চেপে কেটে দিবেন<br>
+1. <b>"Continue with ads"</b> এ ক্লিক করবেন<br>
+2. সবুজ <b>DOWNLOAD APK</b> আসলে X চেপে কেটে দিবেন<br>
 3. একই এড বার বার আসলে <b>Back</b> চেপে আবার Continue চাপুন<br>
 4. শেষে <b>Get Link</b> পেলে ক্লিক করলেই কাজ শেষ
 </div>
@@ -113,39 +109,26 @@ let t=15;
 let el=document.getElementById('timer');
 let btn=document.getElementById('goBtn');
 let target="{{LINK}}";
-let iid=setInterval(()=>{
-  t--; el.innerText=t;
-  if(t<=0){clearInterval(iid); el.innerText="Ready! ✅"; btn.style.display="block";}
-},1000);
-function goNow(){ window.location.href=target; }
+let iid=setInterval(()=>{t--;el.innerText=t;if(t<=0){clearInterval(iid);el.innerText="Ready! ✅";btn.style.display="block";}},1000);
+function goNow(){window.location.href=target;}
 </script>
 </body>
 </html>
 """
 
 @app.route('/')
-def home():
-    return "Bot Running 24h - 5 Tasks Live - int-55489 OK - 30 Limit - Done Check OK"
-
+def home(): return "Bot Running FINAL - 5 Tasks - 55463 ACTIVE - 0.10 Taka"
 @app.route('/offerwall.html')
-def offerwall_page():
-    return render_template_string(OFFERWALL_HTML)
-
+def offerwall_page(): return render_template_string(OFFERWALL_HTML)
 @app.route('/adsgram.html')
-def adsgram_page():
-    return render_template_string(ADSGRAM_HTML)
-
+def adsgram_page(): return render_template_string(ADSGRAM_HTML)
 @app.route('/go/<link_id>')
 def go_link(link_id):
     try:
         t = link_tasks.find_one({"_id": ObjectId(link_id)})
-        if not t:
-            return "Link not found or expired", 404
-        real_link = t.get("link")
-        html = LINK_VERIFY_HTML.replace("{{LINK}}", real_link)
-        return render_template_string(html)
-    except Exception as e:
-        return f"Invalid Link: {e}", 400
+        if not t: return "Link not found", 404
+        return render_template_string(LINK_VERIFY_HTML.replace("{{LINK}}", t.get("link")))
+    except Exception as e: return f"Invalid Link: {e}", 400
 
 def add_refer_commission(user_id, earned_taka):
     try:
@@ -196,16 +179,14 @@ def timewall_postback():
 def adsgram_reward():
     user_id = request.args.get('userId') or request.args.get('user_id') or request.args.get('uid') or request.args.get('userid')
     done_flag = request.args.get('done')
-    block_id = request.args.get('blockId') or 'int-55489'
+    block_id = request.args.get('blockId') or '55463'
     if not user_id: return "no userId", 400
     if done_flag != "1": return "not done", 200
     try:
         uid_int = int(float(user_id))
         count_today = task_done.count_documents({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-86400}})
-        if count_today >= ADSGRAM_DAILY_LIMIT:
-            return "limit", 200
-        if task_done.find_one({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-15}}):
-            return "too fast", 200
+        if count_today >= ADSGRAM_DAILY_LIMIT: return "limit", 200
+        if task_done.find_one({"user_id": uid_int, "type": "adsgram", "time": {"$gt": time.time()-15}}): return "too fast", 200
         users.update_one({"_id": uid_int}, {"$inc": {"balance": ADSGRAM_REWARD}})
         task_done.insert_one({"user_id": uid_int, "blockId": block_id, "type": "adsgram", "time": time.time(), "taka": ADSGRAM_REWARD})
         add_refer_commission(uid_int, ADSGRAM_REWARD)
@@ -218,33 +199,22 @@ def adsgram_reward():
 
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive():
-    t = Thread(target=run)
-    t.daemon = True
-    t.start()
+    t = Thread(target=run); t.daemon=True; t.start()
 
-pending_tasks = {}
-pending_captcha = {}
-pending_link = {}
+pending_tasks = {}; pending_captcha = {}; pending_link = {}
 NO_TASK_MSG = "😊 আপাতত নতুন কোনো কাজ নেই।"
 TASK_WAIT_TIME = 30
 
 def get_main_menu():
     mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("KAJ", "BALANCE")
-    mk.row("REFER", "WITHDRAW")
-    return mk
+    mk.row("KAJ", "BALANCE"); mk.row("REFER", "WITHDRAW"); return mk
 def admin_menu():
     mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("TASK ADD", "🗑️ DELETE TASK")
-    mk.row("🗑️ DELETE ALL TASK", "📊 STAT")
-    mk.row("📢 BROADCAST", "🔔 NOTIFY")
-    mk.row("WITHDRAW LIST", "KAJ")
-    mk.row("BALANCE", "REFER", "⬅️ BACK TO USER MENU")
-    return mk
+    mk.row("TASK ADD", "🗑️ DELETE TASK"); mk.row("🗑️ DELETE ALL TASK", "📊 STAT")
+    mk.row("📢 BROADCAST", "🔔 NOTIFY"); mk.row("WITHDRAW LIST", "KAJ")
+    mk.row("BALANCE", "REFER", "⬅️ BACK TO USER MENU"); return mk
 def cancel_menu():
-    mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    mk.row("❌ Cancel")
-    return mk
+    mk = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True); mk.row("❌ Cancel"); return mk
 def is_joined(uid):
     try:
         for ch in ["@COINZOBD", "@onlinejob10p"]:
@@ -257,58 +227,43 @@ def get_next_task_for_user(uid):
     for t in tasks.find().sort("time", 1):
         if str(t["_id"]) not in done_ids: return t
     return None
-
 def send_task_to_user(chat_id, uid):
     t = get_next_task_for_user(uid)
-    if not t:
-        bot.send_message(chat_id, NO_TASK_MSG)
-        return None
-    task_id = str(t["_id"])
-    pending_tasks[uid] = {"task_id": task_id, "start": time.time()}
+    if not t: bot.send_message(chat_id, NO_TASK_MSG); return None
+    task_id = str(t["_id"]); pending_tasks[uid] = {"task_id": task_id, "start": time.time()}
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("Visit Task 🔗", url=t.get("link", "https://t.me/COINZOBD")))
     mk.add(telebot.types.InlineKeyboardButton("Done ✅", callback_data=f"done_{task_id}"))
-    bot.send_message(chat_id, f"📝 ডেইলি স্পেশাল টাস্ক:\n{t.get('text','Task koro')}\n\nReward: {t.get('reward',1)} Taka\n\n⏰ 30s দেখে Done চাপো!", reply_markup=mk)
-    return t
-
+    bot.send_message(chat_id, f"📝 ডেইলি স্পেশাল টাস্ক:\n{t.get('text','Task koro')}\n\nReward: {t.get('reward',1)} Taka\n\n⏰ 30s দেখে Done চাপো!", reply_markup=mk); return t
 def send_offerwall_task(chat_id, uid):
     url = f"https://bd-task-zone-telegram-bot.onrender.com/offerwall.html?uid={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("🚀 Open Premium Task Wall", url=url))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back to KAJ", callback_data="kaj_back"))
     bot.send_message(chat_id, f"💎 প্রিমিয়াম অ্যাপ টাস্ক - Unlimited\n500+ App আছে\n1 App = 2-50 Taka\n⏰ টাকা অটো যোগ হবে\n👇 ক্লিক করো:", reply_markup=mk)
-
 def send_adsgram_task(chat_id, uid):
     count_today = task_done.count_documents({"user_id": uid, "type": "adsgram", "time": {"$gt": time.time()-86400}})
     remaining = ADSGRAM_DAILY_LIMIT - count_today
     if remaining <= 0:
-        bot.send_message(chat_id, f"❌ আজকের {ADSGRAM_DAILY_LIMIT}টা ভিডিও শেষ! ✅\nতুমি আজ {ADSGRAM_DAILY_LIMIT * ADSGRAM_REWARD} Taka ইনকাম করে ফেলেছো।\nআগামীকাল আবার {ADSGRAM_DAILY_LIMIT}টা দেখতে পারবে।")
-        return
+        bot.send_message(chat_id, f"❌ আজকের {ADSGRAM_DAILY_LIMIT}টা ভিডিও শেষ! ✅\nতুমি আজ {ADSGRAM_DAILY_LIMIT * ADSGRAM_REWARD} Taka ইনকাম করে ফেলেছো।\nআগামীকাল আবার {ADSGRAM_DAILY_LIMIT}টা দেখতে পারবে।"); return
     url = f"https://bd-task-zone-telegram-bot.onrender.com/adsgram.html?user_id={uid}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton(f"▶️ ভিডিও দেখুন (15s) - {remaining} টা বাকি", web_app=telebot.types.WebAppInfo(url=url)))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back to KAJ", callback_data="kaj_back"))
     bot.send_message(chat_id, f"🎬 ভিডিও দেখে ইনকাম করো\n✅ 1 ভিডিও = {ADSGRAM_REWARD} Taka\n✅ আজ বাকি আছে: {remaining}/{ADSGRAM_DAILY_LIMIT} টা\n✅ আজ সর্বোচ্চ: {ADSGRAM_DAILY_LIMIT * ADSGRAM_REWARD} Taka ইনকাম\n\n👇 ভিডিও দেখতে নিচে ক্লিক করো:", reply_markup=mk)
-
 def send_link_visit_task(chat_id, uid):
     done_ids = [x["link_task_id"] for x in task_done.find({"user_id": uid, "link_task_id": {"$exists": True}})]
     t = None
     for task in link_tasks.find().sort("time", 1):
-        if str(task["_id"]) not in done_ids:
-            t = task
-            break
-    if not t:
-        bot.send_message(chat_id, "😊 আপাতত লিংক ভিজিট এর কোনো কাজ নেই।")
-        return
-    link_id = str(t["_id"])
-    pending_link[uid] = {"id": link_id, "start": time.time()}
+        if str(task["_id"]) not in done_ids: t = task; break
+    if not t: bot.send_message(chat_id, "😊 আপাতত লিংক ভিজিট এর কোনো কাজ নেই।"); return
+    link_id = str(t["_id"]); pending_link[uid] = {"id": link_id, "start": time.time()}
     my_bridge_url = f"https://bd-task-zone-telegram-bot.onrender.com/go/{link_id}"
     mk = telebot.types.InlineKeyboardMarkup()
     mk.add(telebot.types.InlineKeyboardButton("🔗 Visit Link (15s)", url=my_bridge_url))
     mk.add(telebot.types.InlineKeyboardButton(f"✅ Claim {t.get('reward')} Taka", callback_data=f"claim_link_{link_id}"))
     mk.add(telebot.types.InlineKeyboardButton("⬅️ Back to KAJ", callback_data="kaj_back"))
-    bot.send_message(chat_id, f"🚀 লিংক ভিজিট বোনাস\n{t.get('text')}\n🔗 15 সেকেন্ড থাকো তারপর Continue\n💰 Reward: {t.get('reward')} Taka\n\n⚠️ APK DOWNLOAD আসলে X চেপে কাটবে", reply_markup=mk)
-
+    bot.send_message(chat_id, f"🚀 লিংক ভিজিট বোনাস\n{t.get('text')}\n🔗 15 সেকেন্ড থাকো তারপর Continue\n💰 Reward: {t.get('reward')} Taka", reply_markup=mk)
 def send_captcha_task(chat_id, uid):
     text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
     pending_captcha[uid] = {"text": text, "start": time.time()}
@@ -324,11 +279,9 @@ def send_captcha_task(chat_id, uid):
 
 @bot.message_handler(commands=['start'])
 def start(m):
-    uid=m.from_user.id
-    u=users.find_one({"_id": uid})
+    uid=m.from_user.id; u=users.find_one({"_id": uid})
     if u is None:
-        ref=None
-        args=m.text.split()
+        ref=None; args=m.text.split()
         if len(args)>1:
             try:
                 ref_id=int(args[1])
@@ -347,8 +300,7 @@ def start(m):
         mk.add(telebot.types.InlineKeyboardButton("JOIN COINZOBD", url="https://t.me/COINZOBD"))
         mk.add(telebot.types.InlineKeyboardButton("JOIN Online Job", url="https://t.me/onlinejob10p"))
         mk.add(telebot.types.InlineKeyboardButton("Joined Done ✅", callback_data="check_join"))
-        bot.send_message(m.chat.id, "2 ta channel join koro:", reply_markup=mk)
-        return
+        bot.send_message(m.chat.id, "2 ta channel join koro:", reply_markup=mk); return
     bot.send_message(m.chat.id, f"Welcome {m.from_user.first_name}! 🎉", reply_markup=get_main_menu())
 
 @bot.message_handler(commands=['admin'])
@@ -356,15 +308,12 @@ def admin_p(m):
     if m.from_user.id==ADMIN_ID: bot.send_message(m.chat.id, "Admin Panel ON 🔒", reply_markup=admin_menu())
 @bot.message_handler(func=lambda m: m.text=="BALANCE")
 def bal(m):
-    u=users.find_one({"_id": m.from_user.id})
-    b=round(u.get("balance",0),2) if u else 0.0
+    u=users.find_one({"_id": m.from_user.id}); b=round(u.get("balance",0),2) if u else 0.0
     bot.send_message(m.chat.id, f"💰 BALANCE: {b} Taka")
 @bot.message_handler(func=lambda m: m.text=="REFER")
 def refer(m):
-    uid = m.from_user.id
-    u = users.find_one({"_id": uid})
-    count = u.get("refer_count", 0) if u else 0
-    earn = round(u.get("refer_earnings", 0), 2) if u else 0.0
+    uid = m.from_user.id; u = users.find_one({"_id": uid})
+    count = u.get("refer_count", 0) if u else 0; earn = round(u.get("refer_earnings", 0), 2) if u else 0.0
     link=f"https://t.me/{bot.get_me().username}?start={uid}"
     txt = f"🔗 Refer Link:\n{link}\n\n👥 Total: {count} জন\n💰 Earn: {earn} Taka\n\nLevel 1=10% 2=5% 3=2.5%"
     bot.send_message(m.chat.id, txt)
@@ -379,17 +328,14 @@ def kaj(m):
     bot.send_message(m.chat.id, "👇 কাজ সিলেক্ট করো (5 টা অপশন):", reply_markup=mk)
 @bot.message_handler(func=lambda m: m.text=="WITHDRAW")
 def withdraw(m):
-    uid=m.from_user.id
-    u=users.find_one({"_id": uid})
+    uid=m.from_user.id; u=users.find_one({"_id": uid})
     if not u: bot.send_message(m.chat.id, "First /start dao!"); return
     if withdraws.find_one({"user_id": uid, "status": "pending"}): bot.send_message(m.chat.id, "⏳ Pending আছে"); return
-    bal_val=round(u.get("balance",0),2)
-    ref=u.get("refer_count",0)
+    bal_val=round(u.get("balance",0),2); ref=u.get("refer_count",0)
     if bal_val<40: bot.send_message(m.chat.id, f"❌ {bal_val} Taka, 40 লাগবে"); return
     if not withdraws.find_one({"user_id": uid, "status": {"$in": ["approved","pending"]}}):
         if ref<5: bot.send_message(m.chat.id, f"❌ প্রথমবার 5 Refer লাগবে! তোমার {ref} টা"); return
-    fee=round(bal_val*0.05,2)
-    get_amt=round(bal_val-fee,2)
+    fee=round(bal_val*0.05,2); get_amt=round(bal_val-fee,2)
     users.update_one({"_id": uid}, {"$set": {"balance": 0.0}})
     withdraws.insert_one({"user_id": uid, "username": m.from_user.username, "first_name": m.from_user.first_name, "total": bal_val, "fee": fee, "get": get_amt, "status": "pending", "time": time.time()})
     bot.send_message(m.chat.id, f"✅ Request: Total {bal_val} | Get {get_amt}")
@@ -433,13 +379,11 @@ def notify_btn(m):
     bot.register_next_step_handler(m, do_notify)
 def do_notify(m):
     if m.text=="❌ Cancel": bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
-    count=m.text
-    txt=f"🔔 নতুন {count} টা কাজ যোগ হয়েছে! KAJ চাপো।"
+    count=m.text; txt=f"🔔 নতুন {count} টা কাজ যোগ হয়েছে! KAJ চাপো।"
     for u in users.find({}, {"_id": 1}):
         try: bot.send_message(u["_id"], txt); time.sleep(0.05)
         except: pass
     bot.send_message(m.chat.id, "✅ Notified", reply_markup=admin_menu())
-
 @bot.message_handler(func=lambda m: m.text=="TASK ADD")
 def task_add_start(m):
     if m.from_user.id!=ADMIN_ID: return
@@ -447,31 +391,22 @@ def task_add_start(m):
     mk.add(telebot.types.InlineKeyboardButton("📝 Regular Task", callback_data="add_regular"))
     mk.add(telebot.types.InlineKeyboardButton("🚀 Link Visit Bonus", callback_data="add_linkbonus"))
     bot.send_message(m.chat.id, "কোন ধরনের টাস্ক অ্যাড করবে সিলেক্ট করো:", reply_markup=mk)
-
 def task_add_link(m):
     if m.text=="❌ Cancel": bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
-    text=m.text
-    bot.send_message(m.chat.id, "Link dao:", reply_markup=cancel_menu())
+    text=m.text; bot.send_message(m.chat.id, "Link dao:", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, lambda x: task_add_reward(x, text))
-
 def task_add_reward(m, text):
     if m.text=="❌ Cancel": bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
-    link=m.text
-    bot.send_message(m.chat.id, "Reward koto? (যেমন 1)", reply_markup=cancel_menu())
+    link=m.text; bot.send_message(m.chat.id, "Reward koto? (যেমন 1)", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, lambda x: task_save(x, text, link, "regular"))
-
 def link_task_add_link(m):
     if m.text=="❌ Cancel": bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
-    text=m.text
-    bot.send_message(m.chat.id, "GPLinks Link dao:", reply_markup=cancel_menu())
+    text=m.text; bot.send_message(m.chat.id, "GPLinks Link dao:", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, lambda x: link_task_add_reward(x, text))
-
 def link_task_add_reward(m, text):
     if m.text=="❌ Cancel": bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
-    link=m.text
-    bot.send_message(m.chat.id, "Reward koto? (যেমন 0.15)", reply_markup=cancel_menu())
+    link=m.text; bot.send_message(m.chat.id, "Reward koto? (যেমন 0.15)", reply_markup=cancel_menu())
     bot.register_next_step_handler(m, lambda x: task_save(x, text, link, "link"))
-
 def task_save(m, text, link, task_type):
     if m.text=="❌ Cancel": bot.send_message(m.chat.id, "Cancelled", reply_markup=admin_menu()); return
     try: reward=float(m.text)
@@ -482,7 +417,6 @@ def task_save(m, text, link, task_type):
     else:
         link_tasks.insert_one({"text": text, "link": link, "reward": reward, "time": time.time()})
         bot.send_message(m.chat.id, f"✅ Link Visit Task Added: {reward} Taka", reply_markup=admin_menu())
-
 @bot.message_handler(func=lambda m: m.text in ["🗑️ DELETE TASK", "🗑️ DELETE ALL TASK"])
 def delete_task_menu(m):
     if m.from_user.id!=ADMIN_ID: return
@@ -490,8 +424,7 @@ def delete_task_menu(m):
         mk=telebot.types.InlineKeyboardMarkup()
         mk.add(telebot.types.InlineKeyboardButton("✅ Yes Delete ALL", callback_data="del_all_tasks"))
         mk.add(telebot.types.InlineKeyboardButton("❌ Cancel", callback_data="del_cancel"))
-        bot.send_message(m.chat.id, "সব Task Delete করবে?", reply_markup=mk)
-        return
+        bot.send_message(m.chat.id, "সব Task Delete করবে?", reply_markup=mk); return
     all_tasks=list(tasks.find().sort("time", -1).limit(20))
     if not all_tasks: bot.send_message(m.chat.id, "No Task", reply_markup=admin_menu()); return
     mk=telebot.types.InlineKeyboardMarkup()
@@ -500,44 +433,31 @@ def delete_task_menu(m):
         mk.add(telebot.types.InlineKeyboardButton(f"🗑️ {txt}", callback_data=f"deltask_{str(t['_id'])}"))
     mk.add(telebot.types.InlineKeyboardButton("❌ Delete ALL", callback_data="del_all_tasks"))
     bot.send_message(m.chat.id, "Delete ক্লিক করো:", reply_markup=mk)
-
 @bot.message_handler(func=lambda m: m.text=="⬅️ BACK TO USER MENU")
 def back(m): bot.send_message(m.chat.id, "User Mode", reply_markup=get_main_menu())
-
 @bot.message_handler(func=lambda m: m.from_user.id in pending_captcha and m.text not in ["KAJ","BALANCE","REFER","WITHDRAW","TASK ADD","🗑️ DELETE TASK","🗑️ DELETE ALL TASK","📊 STAT","WITHDRAW LIST","📢 BROADCAST","🔔 NOTIFY","⬅️ BACK TO USER MENU","❌ Cancel"])
 def handle_captcha_answer(m):
-    uid = m.from_user.id
-    data = pending_captcha.get(uid)
+    uid = m.from_user.id; data = pending_captcha.get(uid)
     if not data: return
-    if time.time() - data["start"] > 60:
-        del pending_captcha[uid]
-        bot.send_message(m.chat.id, "⏰ সময় শেষ!")
-        return
+    if time.time() - data["start"] > 60: del pending_captcha[uid]; bot.send_message(m.chat.id, "⏰ সময় শেষ!"); return
     if m.text.strip().upper() == data["text"].upper():
         del pending_captcha[uid]
         users.update_one({"_id": uid}, {"$inc": {"balance": CAPTCHA_REWARD}})
         task_done.insert_one({"user_id": uid, "type": "captcha", "time": time.time(), "taka": CAPTCHA_REWARD})
         add_refer_commission(uid, CAPTCHA_REWARD)
-        bot.send_message(m.chat.id, f"✅ সঠিক! +{CAPTCHA_REWARD} Taka")
-        time.sleep(1)
-        send_captcha_task(m.chat.id, uid)
+        bot.send_message(m.chat.id, f"✅ সঠিক! +{CAPTCHA_REWARD} Taka"); time.sleep(1); send_captcha_task(m.chat.id, uid)
     else: bot.send_message(m.chat.id, "❌ ভুল! আবার দেখো।")
-
 @bot.callback_query_handler(func=lambda c: True)
 def callback(c):
     uid = c.from_user.id
-    
     if c.data=="add_regular":
         bot.send_message(c.message.chat.id, "Regular Task এর Text dao:", reply_markup=cancel_menu())
         bot.register_next_step_handler(c.message, task_add_link)
-        bot.answer_callback_query(c.id)
-        return
+        bot.answer_callback_query(c.id); return
     elif c.data=="add_linkbonus":
-        bot.send_message(c.message.chat.id, "Link Visit এর Text dao (যেমন: Visit This Link):", reply_markup=cancel_menu())
+        bot.send_message(c.message.chat.id, "Link Visit এর Text dao:", reply_markup=cancel_menu())
         bot.register_next_step_handler(c.message, link_task_add_link)
-        bot.answer_callback_query(c.id)
-        return
-
+        bot.answer_callback_query(c.id); return
     if c.data=="kaj_coin": send_offerwall_task(c.message.chat.id, uid); bot.answer_callback_query(c.id); return
     elif c.data=="kaj_regular": send_task_to_user(c.message.chat.id, uid); bot.answer_callback_query(c.id); return
     elif c.data=="kaj_adsgram": send_adsgram_task(c.message.chat.id, uid); bot.answer_callback_query(c.id); return
@@ -546,15 +466,9 @@ def callback(c):
     elif c.data.startswith("claim_link_"):
         link_id_str = c.data.split("claim_link_")[1]
         link_data = pending_link.get(uid)
-        if not link_data or link_data["id"] != link_id_str: 
-            bot.answer_callback_query(c.id, "Expire! আবার KAJ থেকে ঢুকো", show_alert=True)
-            return
-        if time.time() - link_data["start"] < 15: 
-            bot.answer_callback_query(c.id, f"⏳ {int(15-(time.time()-link_data['start']))}s অপেক্ষা করো", show_alert=True)
-            return
-        if task_done.find_one({"user_id": uid, "link_task_id": link_id_str}):
-            bot.answer_callback_query(c.id, "আগেই করেছো!", show_alert=True)
-            return
+        if not link_data or link_data["id"] != link_id_str: bot.answer_callback_query(c.id, "Expire! আবার KAJ থেকে ঢুকো", show_alert=True); return
+        if time.time() - link_data["start"] < 15: bot.answer_callback_query(c.id, f"⏳ {int(15-(time.time()-link_data['start']))}s অপেক্ষা করো", show_alert=True); return
+        if task_done.find_one({"user_id": uid, "link_task_id": link_id_str}): bot.answer_callback_query(c.id, "আগেই করেছো!", show_alert=True); return
         t = link_tasks.find_one({"_id": ObjectId(link_id_str)})
         if not t: return
         reward = t.get("reward", LINK_REWARD)
@@ -562,11 +476,8 @@ def callback(c):
         users.update_one({"_id": uid}, {"$inc": {"balance": reward}})
         task_done.insert_one({"user_id": uid, "link_task_id": link_id_str, "type": "link", "time": time.time(), "taka": reward})
         add_refer_commission(uid, reward)
-        bot.send_message(c.message.chat.id, f"✅ +{reward} Taka পেয়েছো!")
-        time.sleep(1)
-        send_link_visit_task(c.message.chat.id, uid)
-        bot.answer_callback_query(c.id)
-        return
+        bot.send_message(c.message.chat.id, f"✅ +{reward} Taka পেয়েছো!"); time.sleep(1); send_link_visit_task(c.message.chat.id, uid)
+        bot.answer_callback_query(c.id); return
     elif c.data=="kaj_back": kaj(c.message); bot.answer_callback_query(c.id); return
     if c.data.startswith("wd_approve_"):
         if c.from_user.id!=ADMIN_ID: return
@@ -576,8 +487,7 @@ def callback(c):
         withdraws.update_one({"_id": ObjectId(wid)}, {"$set": {"status": "approved"}})
         try: bot.send_message(w["user_id"], f"✅ {w['get']} Taka Approve!")
         except: pass
-        bot.edit_message_text(f"✅ APPROVED {w['user_id']}", c.message.chat.id, c.message.message_id)
-        return
+        bot.edit_message_text(f"✅ APPROVED {w['user_id']}", c.message.chat.id, c.message.message_id); return
     elif c.data.startswith("wd_reject_"):
         if c.from_user.id!=ADMIN_ID: return
         wid=c.data.split("wd_reject_")[1]
@@ -587,14 +497,12 @@ def callback(c):
         withdraws.update_one({"_id": ObjectId(wid)}, {"$set": {"status": "rejected"}})
         try: bot.send_message(w["user_id"], f"❌ Reject, {w['total']} ফেরত")
         except: pass
-        bot.edit_message_text(f"❌ REJECTED {w['user_id']}", c.message.chat.id, c.message.message_id)
-        return
+        bot.edit_message_text(f"❌ REJECTED {w['user_id']}", c.message.chat.id, c.message.message_id); return
     if c.data=="check_join":
         if is_joined(c.from_user.id): bot.send_message(c.message.chat.id, "Welcome!", reply_markup=get_main_menu())
         else: bot.answer_callback_query(c.id, "Join koro nai!", show_alert=True)
     elif c.data.startswith("done_"):
-        tid=c.data.split("done_")[1]
-        t=tasks.find_one({"_id": ObjectId(tid)})
+        tid=c.data.split("done_")[1]; t=tasks.find_one({"_id": ObjectId(tid)})
         if not t: return
         if task_done.find_one({"user_id": uid, "task_id": tid}): bot.answer_callback_query(c.id, "আগেই করেছো!", show_alert=True); return
         p=pending_tasks.get(uid)
@@ -612,20 +520,15 @@ def callback(c):
     elif c.data.startswith("deltask_"):
         if c.from_user.id!=ADMIN_ID: return
         tid=c.data.split("deltask_")[1]
-        tasks.delete_one({"_id": ObjectId(tid)})
-        task_done.delete_many({"task_id": tid})
-        bot.answer_callback_query(c.id, "Deleted!")
-        bot.edit_message_text("✅ Deleted", c.message.chat.id, c.message.message_id)
+        tasks.delete_one({"_id": ObjectId(tid)}); task_done.delete_many({"task_id": tid})
+        bot.answer_callback_query(c.id, "Deleted!"); bot.edit_message_text("✅ Deleted", c.message.chat.id, c.message.message_id)
     elif c.data=="del_all_tasks":
         if c.from_user.id!=ADMIN_ID: return
-        tasks.delete_many({})
-        link_tasks.delete_many({})
-        task_done.delete_many({"task_id": {"$exists": True}})
-        task_done.delete_many({"link_task_id": {"$exists": True}})
-        bot.answer_callback_query(c.id, "All Deleted!")
-        bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
+        tasks.delete_many({}); link_tasks.delete_many({})
+        task_done.delete_many({"task_id": {"$exists": True}}); task_done.delete_many({"link_task_id": {"$exists": True}})
+        bot.answer_callback_query(c.id, "All Deleted!"); bot.edit_message_text("✅ সব Delete", c.message.chat.id, c.message.message_id)
     elif c.data=="del_cancel": bot.edit_message_text("Cancelled", c.message.chat.id, c.message.message_id)
 
-print("Bot Running FINAL - 5 Tasks - int-55489 - 30 Limit - Done Check OK")
+print("Bot Running FINAL - 5 Tasks - 55463 ACTIVE - 0.10 Taka - FULL")
 keep_alive()
 bot.infinity_polling()
